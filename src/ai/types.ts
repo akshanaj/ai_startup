@@ -26,3 +26,22 @@ export const GradeDocumentOutputSchema = z.object({
   score: z.number().describe("The student's score based on the rubric."),
 });
 export type GradeDocumentOutput = z.infer<typeof GradeDocumentOutputSchema>;
+
+
+// ChatWithDocument flow types
+export const ChatWithDocumentInputSchema = z.object({
+  document: GradeDocumentInputSchema.describe("The original document and grading criteria."),
+  currentAnalysis: GradeDocumentOutputSchema.describe("The current analysis and grade of the document."),
+  userMessage: z.string().describe("The user's message or request to refine the analysis."),
+  chatHistory: z.array(z.object({
+    role: z.enum(['user', 'model']),
+    message: z.string(),
+  })).describe("The history of the conversation so far."),
+});
+export type ChatWithDocumentInput = z.infer<typeof ChatWithDocumentInputSchema>;
+
+export const ChatWithDocumentOutputSchema = z.object({
+  llmResponse: z.string().describe("The chatbot's text response to the user's message."),
+  updatedAnalysis: GradeDocumentOutputSchema.describe("The new, updated grading analysis based on the user's request. This should be a complete analysis object, not just a delta."),
+});
+export type ChatWithDocumentOutput = z.infer<typeof ChatWithDocumentOutputSchema>;

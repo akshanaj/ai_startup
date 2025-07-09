@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
+import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles } from "lucide-react"
-import type { GradeDocumentInput, GradeDocumentOutput } from "@/ai/types";
+import { Loader2, GraduationCap, Sparkles, Bot, User } from "lucide-react"
+import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -15,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+
 
 interface GradedDoc {
     id: string;
@@ -34,19 +37,66 @@ const example = {
     keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen"
 };
 
+interface ChatMessage {
+    role: 'user' | 'model';
+    message: string;
+}
+
 export default function GraderClient() {
   const [isGrading, setIsGrading] = useState(false);
+  const [isChatting, setIsChatting] = useState(false);
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
+  
   const [gradedDoc, setGradedDoc] = useState<GradedDoc | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
 
   const [gradeInput, setGradeInput] = useState<GradeDocumentInput>({ question: '', answer: '', rubric: '', keywords: '' });
+  const [chatInput, setChatInput] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+
 
   const { toast } = useToast()
+
+  useEffect(() => {
+    // Scroll to the bottom of the chat history when it updates
+    if (chatScrollAreaRef.current) {
+        chatScrollAreaRef.current.scrollTo({ top: chatScrollAreaRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, [chatHistory]);
+
 
   const loadExample = () => {
     setGradeInput(example);
   };
+
+  const processAndSetGradedDoc = (doc: GradeDocumentOutput, input: GradeDocumentInput) => {
+    let highlightedAnswer = input.answer;
+    doc.analysis.forEach(item => {
+        const sentimentClass = {
+            positive: "bg-green-200/50 hover:bg-green-300/80",
+            negative: "bg-red-200/50 hover:bg-red-300/80",
+            neutral: "bg-yellow-200/50 hover:bg-yellow-300/80"
+        }[item.sentiment];
+
+        // Escape special characters in segment for regex
+        const escapedSegment = item.segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(^|\\s|>)(${escapedSegment})(<|\\s|$)`, 'g');
+
+        if (item.sentiment !== 'neutral') {
+             highlightedAnswer = highlightedAnswer.replace(regex, `$1<mark id="${item.id}" class="${sentimentClass} p-1 rounded-md cursor-pointer transition-colors">${item.segment}</mark>$3`);
+        }
+    });
+
+    setGradedDoc({
+        ...input,
+        id: `doc-${Date.now()}`,
+        answer: highlightedAnswer,
+        analysis: doc.analysis,
+        overallFeedback: doc.overallFeedback,
+        score: doc.score,
+    });
+  }
   
   const handleGrade = async () => {
     if (!gradeInput.question.trim() || !gradeInput.answer.trim() || !gradeInput.rubric.trim()) {
@@ -55,31 +105,10 @@ export default function GraderClient() {
     }
     setIsGrading(true);
     setGradedDoc(null);
+    setChatHistory([]);
     try {
         const result = await gradeDocument(gradeInput);
-        
-        let highlightedAnswer = gradeInput.answer;
-        result.analysis.forEach(item => {
-            const sentimentClass = {
-                positive: "bg-green-200/50 hover:bg-green-300/80",
-                negative: "bg-red-200/50 hover:bg-red-300/80",
-                neutral: "bg-yellow-200/50 hover:bg-yellow-300/80"
-            }[item.sentiment];
-
-            if (sentimentClass !== "bg-yellow-200/50 hover:bg-yellow-300/80'") { // Don't highlight neutral
-                highlightedAnswer = highlightedAnswer.replace(item.segment, `<mark id="${item.id}" class="${sentimentClass} p-1 rounded-md cursor-pointer transition-colors">${item.segment}</mark>`);
-            }
-        });
-
-        setGradedDoc({
-            ...gradeInput,
-            id: `doc-${Date.now()}`,
-            answer: highlightedAnswer,
-            analysis: result.analysis,
-            overallFeedback: result.overallFeedback,
-            score: result.score,
-        });
-        
+        processAndSetGradedDoc(result, gradeInput);
     } catch (error) {
         console.error("Grading error:", error);
         toast({ title: "Grading Error", description: "Could not grade the document. Please try again.", variant: "destructive" });
@@ -88,6 +117,57 @@ export default function GraderClient() {
         setIsGradeDialogOpen(false);
     }
   };
+
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !gradedDoc) return;
+
+    const userMessage: ChatMessage = { role: 'user', message: chatInput };
+    setChatHistory(prev => [...prev, userMessage]);
+    setChatInput("");
+    setIsChatting(true);
+
+    try {
+        const currentAnalysis: GradeDocumentOutput = {
+            analysis: gradedDoc.analysis,
+            overallFeedback: gradedDoc.overallFeedback,
+            score: gradedDoc.score,
+        };
+        const chatFlowInput: ChatWithDocumentInput = {
+            document: {
+                question: gradedDoc.question,
+                answer: gradedDoc.answer.replace(/<[^>]*>/g, ''), // Send clean text
+                rubric: gradedDoc.rubric,
+                keywords: gradedDoc.keywords,
+            },
+            currentAnalysis,
+            userMessage: userMessage.message,
+            chatHistory,
+        };
+
+        const result = await chatWithDocument(chatFlowInput);
+
+        const modelMessage: ChatMessage = { role: 'model', message: result.llmResponse };
+        setChatHistory(prev => [...prev, modelMessage]);
+
+        // Update the document with the refined analysis
+        processAndSetGradedDoc(result.updatedAnalysis, {
+            question: gradedDoc.question,
+            answer: gradedDoc.answer.replace(/<[^>]*>/g, ''), // Use clean answer for re-highlighting
+            rubric: gradedDoc.rubric,
+            keywords: gradedDoc.keywords,
+        });
+
+
+    } catch (error) {
+        console.error("Chat error:", error);
+        toast({ title: "Chat Error", description: "Could not get response from AI. Please try again.", variant: "destructive" });
+        // remove the user message if there was an error
+        setChatHistory(prev => prev.slice(0, -1));
+    } finally {
+        setIsChatting(false);
+    }
+  }
 
   const handleHighlightClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -129,6 +209,7 @@ export default function GraderClient() {
                                 </CardHeader>
                                 <CardContent>
                                     <p className="text-sm">{gradedDoc.overallFeedback}</p>
+
                                 </CardContent>
                               </Card>
                               {gradedDoc.analysis.map((item) => {
@@ -210,14 +291,45 @@ export default function GraderClient() {
                 <CardHeader>
                     <CardTitle>Chat with Gemini</CardTitle>
                 </CardHeader>
-                <CardContent className="flex-grow flex flex-col justify-between">
-                  <div className="text-center text-muted-foreground flex-grow flex items-center justify-center">
-                    <p>Chatbot coming soon.</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input placeholder="Ask about the feedback..." disabled/>
-                    <Button disabled>Send</Button>
-                  </div>
+                <CardContent className="flex-grow flex flex-col justify-between overflow-hidden">
+                    <ScrollArea className="flex-grow h-0" ref={chatScrollAreaRef}>
+                        <div className="space-y-4 p-4">
+                            {chatHistory.length === 0 && !isChatting && (
+                                <div className="text-center text-muted-foreground py-10">
+                                    <Bot className="w-10 h-10 mx-auto mb-2"/>
+                                    <p>After grading a document, you can ask Gemini to refine its analysis here.</p>
+                                </div>
+                            )}
+                            {chatHistory.map((chat, index) => (
+                                <div key={index} className={`flex gap-3 items-start ${chat.role === 'user' ? 'justify-end' : ''}`}>
+                                    {chat.role === 'model' && <Avatar className="w-8 h-8"><AvatarFallback><Bot size={20}/></AvatarFallback></Avatar>}
+                                    <div className={`rounded-lg p-3 text-sm max-w-[85%] ${chat.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                                        {chat.message}
+                                    </div>
+                                    {chat.role === 'user' && <Avatar className="w-8 h-8"><AvatarFallback><User size={20}/></AvatarFallback></Avatar>}
+                                </div>
+                            ))}
+                             {isChatting && (
+                                <div className="flex gap-3 items-start">
+                                    <Avatar className="w-8 h-8"><AvatarFallback><Bot size={20}/></AvatarFallback></Avatar>
+                                    <div className="rounded-lg p-3 text-sm bg-muted flex items-center gap-2">
+                                        <Loader2 className="w-4 h-4 animate-spin"/> Thinking...
+                                    </div>
+                                </div>
+                             )}
+                        </div>
+                    </ScrollArea>
+                    <form onSubmit={handleChatSubmit} className="flex gap-2 p-2 border-t">
+                        <Input
+                            placeholder="Ask to refine the grade..."
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            disabled={!gradedDoc || isChatting}
+                        />
+                        <Button type="submit" disabled={!gradedDoc || isChatting || !chatInput.trim()}>
+                            {isChatting ? <Loader2 className="animate-spin" /> : "Send"}
+                        </Button>
+                    </form>
                 </CardContent>
             </Card>
         </div>
