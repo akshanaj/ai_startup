@@ -22,6 +22,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface Student {
     id: string;
@@ -34,6 +35,7 @@ interface Question {
     text: string;
     rubric: string;
     keywords: string;
+    maxPoints: number;
 }
 
 interface GradingResult {
@@ -45,8 +47,8 @@ interface GradingResult {
 
 const example = {
     questions: [
-        { id: 'q1', text: "Explain the process of photosynthesis.", rubric: "The explanation should be clear, accurate, and mention the roles of sunlight, water, carbon dioxide, chlorophyll, and the production of glucose and oxygen. Grading is out of 10 points.", keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen" },
-        { id: 'q2', text: "What is the primary function of the mitochondria in a cell?", rubric: "The answer must state that mitochondria are responsible for generating most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy. Grading is out of 5 points.", keywords: "ATP, energy, powerhouse, cellular respiration" }
+        { id: 'q1', text: "Explain the process of photosynthesis.", rubric: "The explanation should be clear, accurate, and mention the roles of sunlight, water, carbon dioxide, chlorophyll, and the production of glucose and oxygen.", keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen", maxPoints: 10 },
+        { id: 'q2', text: "What is the primary function of the mitochondria in a cell?", rubric: "The answer must state that mitochondria are responsible for generating most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", keywords: "ATP, energy, powerhouse, cellular respiration", maxPoints: 5 }
     ],
     students: [
         { id: 's1', name: 'Alice', answers: ["Photosynthesis is how plants eat. They take in sunlight and water through their roots, and CO2 from the air. This happens in the leaves, which are green because of chlorophyll. The plant then makes sugar for food and releases oxygen for us to breathe.", "The mitochondria is the powerhouse of the cell, it makes energy."] },
@@ -63,6 +65,7 @@ export default function GraderClient() {
   const [isGrading, setIsGrading] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
+  const [isScorePopoverOpen, setIsScorePopoverOpen] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -110,12 +113,13 @@ export default function GraderClient() {
       id: `q${Date.now()}`,
       text: "New Question",
       rubric: "",
-      keywords: ""
+      keywords: "",
+      maxPoints: 10,
     };
     setQuestions(prev => [...prev, newQuestion]);
   };
 
-  const handleUpdateQuestion = (index: number, field: keyof Question, value: string) => {
+  const handleUpdateQuestion = (index: number, field: keyof Question, value: string | number) => {
     setQuestions(prev => {
       const newQuestions = [...prev];
       newQuestions[index] = { ...newQuestions[index], [field]: value };
@@ -188,6 +192,21 @@ export default function GraderClient() {
         }
     }));
   }
+
+  const handleManualScoreChange = (newScore: number) => {
+    if (!currentQuestion || !activeStudentId || !currentGradingResult) return;
+
+    setGradingResults(prev => ({
+        ...prev,
+        [currentQuestion.id]: {
+            ...prev[currentQuestion.id],
+            [activeStudentId]: {
+                ...currentGradingResult,
+                score: newScore,
+            }
+        }
+    }));
+  };
   
   const handleGrade = async () => {
     if (questions.length === 0 || students.length === 0) {
@@ -203,7 +222,7 @@ export default function GraderClient() {
                 const gradeInput: GradeDocumentInput = {
                     question: question.text,
                     answer: student.answers[questions.findIndex(q => q.id === question.id)],
-                    rubric: question.rubric,
+                    rubric: `${question.rubric} Grading is out of ${question.maxPoints} points.`,
                     keywords: question.keywords,
                     studentId: student.id,
                     questionId: question.id,
@@ -244,7 +263,7 @@ export default function GraderClient() {
             document: {
                 question: currentQuestion.text,
                 answer: studentAnswer,
-                rubric: currentQuestion.rubric,
+                rubric: `${currentQuestion.rubric} Grading is out of ${currentQuestion.maxPoints} points.`,
                 keywords: currentQuestion.keywords,
                 studentId: student.id,
                 questionId: currentQuestion.id
@@ -370,10 +389,36 @@ export default function GraderClient() {
                     </DropdownMenu>
 
                      {currentGradingResult && (
-                        <div className="text-2xl font-bold text-primary flex items-center gap-2">
-                            <Sparkles className="w-6 h-6" />
-                            <span>{currentGradingResult.score} / 10</span>
-                        </div>
+                        <Popover open={isScorePopoverOpen} onOpenChange={setIsScorePopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" className="text-2xl font-bold text-primary flex items-center gap-2">
+                                    <Sparkles className="w-6 h-6" />
+                                    <span>{currentGradingResult.score} / {currentQuestion.maxPoints}</span>
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto">
+                                <div className="grid gap-4">
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium leading-none">Override Score</h4>
+                                        <p className="text-sm text-muted-foreground">
+                                            Manually adjust the grade for this answer.
+                                        </p>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="score-override">Score</Label>
+                                        <Input
+                                            id="score-override"
+                                            type="number"
+                                            defaultValue={currentGradingResult.score}
+                                            onChange={(e) => handleManualScoreChange(parseFloat(e.target.value) || 0)}
+                                            max={currentQuestion.maxPoints}
+                                            min={0}
+                                        />
+                                    </div>
+                                    <Button onClick={() => setIsScorePopoverOpen(false)}>Done</Button>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                     )}
                 </CardHeader>
             </Card>
@@ -500,9 +545,15 @@ export default function GraderClient() {
                                                 <Label htmlFor={`q-rubric-${q.id}`}>Rubric</Label>
                                                 <Textarea id={`q-rubric-${q.id}`} value={q.rubric} onChange={e => handleUpdateQuestion(index, 'rubric', e.target.value)} />
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor={`q-keywords-${q.id}`}>Keywords (comma-separated)</Label>
-                                                <Input id={`q-keywords-${q.id}`} value={q.keywords} onChange={e => handleUpdateQuestion(index, 'keywords', e.target.value)} />
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor={`q-keywords-${q.id}`}>Keywords (comma-separated)</Label>
+                                                    <Input id={`q-keywords-${q.id}`} value={q.keywords} onChange={e => handleUpdateQuestion(index, 'keywords', e.target.value)} />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor={`q-maxPoints-${q.id}`}>Max Points</Label>
+                                                    <Input id={`q-maxPoints-${q.id}`} type="number" value={q.maxPoints} onChange={e => handleUpdateQuestion(index, 'maxPoints', parseInt(e.target.value, 10) || 0)} />
+                                                </div>
                                             </div>
                                             <Button variant="destructive" size="sm" onClick={() => handleRemoveQuestion(index)}><Trash2 className="mr-2"/> Remove Question</Button>
                                         </div>
