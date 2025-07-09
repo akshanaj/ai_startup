@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -23,7 +24,7 @@ const prompt = ai.definePrompt({
 
   Crucially, for each segment, you must also determine the sentiment of your feedback.
   - Use 'positive' if the segment is correct, well-explained, or aligns with the rubric.
-  - Use 'negative' if the segment is inaccurate, misses key points, or contradicts the rubric.
+  - Use 'negative' if the segment is inaccurate, misses key points, or contradicts the rubric. If the sentiment is negative, your comment MUST explain why points were taken off.
   - Use 'neutral' for general observations or contextual comments that are neither strictly positive nor negative.
   
   Create a unique ID for each segment.
