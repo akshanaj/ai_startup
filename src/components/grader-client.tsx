@@ -231,7 +231,7 @@ export default function GraderClient() {
                 processAndSetGradedDoc(result, student, question);
             }
         }
-    } catch (error) => {
+    } catch (error) {
         console.error("Grading error:", error);
         toast({ title: "Grading Error", description: "Could not grade the documents. Please try again.", variant: "destructive" });
     } finally {
@@ -280,7 +280,7 @@ export default function GraderClient() {
 
         processAndSetGradedDoc(result.updatedAnalysis, student, currentQuestion);
 
-    } catch (error) => {
+    } catch (error) {
         console.error("Chat error:", error);
         toast({ title: "Chat Error", description: "Could not get response from AI. Please try again.", variant: "destructive" });
         setChatHistory(prev => prev.slice(0, -1));
@@ -627,5 +627,3 @@ export default function GraderClient() {
     </TooltipProvider>
   )
 }
-
-    
