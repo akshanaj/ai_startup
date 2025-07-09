@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home, Pencil } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -98,6 +98,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
   const [isScorePopoverOpen, setIsScorePopoverOpen] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   
   const [assignmentName, setAssignmentName] = usePersistentState(`${assignmentId}-name`, "Untitled Assignment");
   const [questions, setQuestions] = usePersistentState<Question[]>(`${assignmentId}-questions`, []);
@@ -117,6 +118,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editableTitle, setEditableTitle] = useState(assignmentName);
 
   const { toast } = useToast()
 
@@ -125,6 +127,10 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     if (!currentQuestion || !activeStudentId) return null;
     return gradingResults[currentQuestion.id]?.[activeStudentId] ?? null;
   }, [gradingResults, currentQuestion, activeStudentId]);
+  
+  useEffect(() => {
+    setEditableTitle(assignmentName)
+  }, [assignmentName]);
 
   useEffect(() => {
     if (students.length > 0 && (!activeStudentId || !students.find(s => s.id === activeStudentId))) {
@@ -414,6 +420,15 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     setValidationWarning(null);
     toast({title: "Student Data Updated", description: `${students.length} students loaded.`});
   }
+  
+  const handleTitleSave = () => {
+    if (editableTitle.trim()) {
+        setAssignmentName(editableTitle.trim());
+    } else {
+        setEditableTitle(assignmentName); // revert if empty
+    }
+    setIsEditingTitle(false);
+  };
 
   const isDataLoaded = questions.length > 0 && students.length > 0;
   const areResultsLoaded = Object.keys(gradingResults).length > 0;
@@ -800,9 +815,29 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     <span className="sr-only">Home</span>
                 </Button>
             </Link>
-            <h1 className="text-xl font-headline font-bold text-gray-800">
-              {assignmentName}
-            </h1>
+            <div className="flex items-center gap-2">
+                {isEditingTitle ? (
+                    <Input
+                        value={editableTitle}
+                        onChange={(e) => setEditableTitle(e.target.value)}
+                        onBlur={handleTitleSave}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleTitleSave();
+                            if (e.key === 'Escape') setIsEditingTitle(false);
+                        }}
+                        className="text-xl h-9"
+                        autoFocus
+                    />
+                ) : (
+                    <h1 className="text-xl font-headline font-bold text-gray-800 flex items-center gap-2">
+                        {assignmentName}
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditingTitle(true)}>
+                            <Pencil className="h-4 w-4" />
+                            <span className="sr-only">Edit title</span>
+                        </Button>
+                    </h1>
+                )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
              <Button variant="ghost" size="icon" onClick={() => setIsDataDialogOpen(true)}>
