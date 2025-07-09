@@ -622,26 +622,27 @@ export default function GraderClient() {
                         </TabsList>
                         <TabsContent value="paste-text" className="flex-grow flex flex-col">
                             <Card className="mt-2">
-                                <CardHeader>
+                                <CardHeader className="p-4">
                                     <CardTitle className="text-base flex items-center gap-2">Formatting Guide 
                                       <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger><Info className="w-4 h-4 text-muted-foreground"/></TooltipTrigger>
                                             <TooltipContent>
-                                                <p className="max-w-xs">Each student's entry starts with "Student Name", followed by their answers as bullet points on new lines. The parser is case-insensitive to "Student Name".</p>
+                                                <div className="p-2 text-sm">
+                                                    <p className="font-bold">Each student's entry starts with "Student Name", followed by their answers as bullet points on new lines. The parser is case-insensitive to "Student Name".</p>
+                                                    <code className="block whitespace-pre-wrap p-2 rounded bg-muted mt-2">
+                                                        Student Name Alice<br/>
+                                                        • Answer 1...<br/>
+                                                        • Answer 2...<br/>
+                                                        <br/>
+                                                        Student Name Bob<br/>
+                                                        • Answer 1...<br/>
+                                                    </code>
+                                                </div>
                                             </TooltipContent>
                                         </Tooltip>
                                       </TooltipProvider>
                                     </CardTitle>
-                                    <CardDescription className="text-xs">
-                                        <code className="block whitespace-pre-wrap p-2 rounded bg-muted">
-                                            Student Name Alice<br/>
-                                            • Answer 1...<br/>
-                                            • Answer 2...<br/>
-                                            Student Name Bob<br/>
-                                            • Answer 1...<br/>
-                                        </code>
-                                    </CardDescription>
                                 </CardHeader>
                             </Card>
                             <Textarea 
@@ -659,7 +660,7 @@ export default function GraderClient() {
                                           <Tooltip>
                                               <TooltipTrigger><Info className="w-4 h-4 text-muted-foreground"/></TooltipTrigger>
                                               <TooltipContent>
-                                                  <p className="max-w-xs">Upload one .txt file per student. The student's name will be the filename. Each line in the file is treated as an answer to a question, in order.</p>
+                                                  <p className="max-w-xs p-2">Upload one .txt file per student. The student's name will be the filename. Each line in the file is treated as an answer to a question, in order.</p>
                                               </TooltipContent>
                                           </Tooltip>
                                       </TooltipProvider>
