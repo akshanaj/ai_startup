@@ -310,7 +310,27 @@ export default function GraderClient() {
         parsedStudents = studentBlocks.map((block, index) => {
             const lines = block.trim().split('\n');
             const name = lines[0].trim().replace(/•/g, '').trim() || `Student ${index + 1}`;
-            const answers = lines.slice(1).map(line => line.replace(/•/g, '').trim()).filter(Boolean);
+            const answerText = lines.slice(1).join('\n').trim();
+            const answers = answerText.split(/•/g).map(a => a.trim()).filter(Boolean);
+            
+            // If no bullet points, split by number of questions
+            if (answers.length <= 1 && questions.length > 1 && answerText) {
+                // A simple heuristic: split by double newlines or just chunk it.
+                let potentialAnswers = answerText.split(/\n\s*\n/);
+                if (potentialAnswers.length < questions.length) {
+                    // Fallback for single block of text
+                     const words = answerText.split(' ');
+                     const wordsPerAnswer = Math.floor(words.length / questions.length);
+                     potentialAnswers = [];
+                     for (let i = 0; i < questions.length; i++) {
+                        const start = i * wordsPerAnswer;
+                        const end = (i === questions.length - 1) ? words.length : (i + 1) * wordsPerAnswer;
+                        potentialAnswers.push(words.slice(start, end).join(' '));
+                     }
+                }
+                return { id: `s${Date.now()}${index}`, name, answers: potentialAnswers.slice(0, questions.length) };
+            }
+
             return { id: `s${Date.now()}${index}`, name, answers };
         });
     } else { // File Upload
@@ -630,14 +650,14 @@ export default function GraderClient() {
                                             </PopoverTrigger>
                                             <PopoverContent>
                                                 <div className="p-2 text-sm space-y-2">
-                                                    <p className="font-bold">Each student's entry starts with "Student Name", followed by their answers as bullet points on new lines. The parser is case-insensitive to "Student Name".</p>
+                                                    <p className="font-bold">Each student's entry starts with "Student Name", followed by their answers on new lines. The parser is case-insensitive to "Student Name" and will divide the text among the questions.</p>
                                                     <code className="block whitespace-pre-wrap p-2 rounded bg-muted mt-2 text-xs">
                                                         Student Name Alice<br/>
-                                                        • Answer to Question 1...<br/>
-                                                        • Answer to Question 2...<br/>
+                                                        Answer to Question 1...<br/>
+                                                        Answer to Question 2...<br/>
                                                         <br/>
                                                         Student Name Bob<br/>
-                                                        • Answer to Question 1...<br/>
+                                                        Answer to Question 1...<br/>
                                                     </code>
                                                 </div>
                                             </PopoverContent>
@@ -740,5 +760,3 @@ export default function GraderClient() {
     </TooltipProvider>
   )
 }
-
-    
