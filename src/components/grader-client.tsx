@@ -1,10 +1,11 @@
+
 "use client"
 
 import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2 } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -20,6 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
 interface Student {
     id: string;
@@ -60,7 +62,7 @@ interface ChatMessage {
 export default function GraderClient() {
   const [isGrading, setIsGrading] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
-  const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
+  const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -83,8 +85,8 @@ export default function GraderClient() {
   }, [gradingResults, currentQuestion, activeStudentId]);
 
   useEffect(() => {
-    if (students.length > 0 && !activeStudentId) {
-        setActiveStudentId(students[0].id);
+    if (students.length > 0 && (!activeStudentId || !students.find(s => s.id === activeStudentId))) {
+        setActiveStudentId(students[0]?.id ?? null);
     }
   }, [students, activeStudentId]);
 
@@ -99,7 +101,63 @@ export default function GraderClient() {
     setStudents(example.students);
     setActiveQuestionIndex(0);
     setActiveStudentId(example.students[0]?.id);
+    setIsDataDialogOpen(false);
+    toast({ title: "Example Data Loaded", description: "You can now start grading." });
   };
+  
+  const handleAddNewQuestion = () => {
+    const newQuestion: Question = {
+      id: `q${Date.now()}`,
+      text: "New Question",
+      rubric: "",
+      keywords: ""
+    };
+    setQuestions(prev => [...prev, newQuestion]);
+  };
+
+  const handleUpdateQuestion = (index: number, field: keyof Question, value: string) => {
+    setQuestions(prev => {
+      const newQuestions = [...prev];
+      newQuestions[index] = { ...newQuestions[index], [field]: value };
+      return newQuestions;
+    });
+  };
+
+  const handleRemoveQuestion = (index: number) => {
+    setQuestions(prev => prev.filter((_, i) => i !== index));
+    // Also remove corresponding answers from students
+    setStudents(prev => prev.map(student => {
+        const newAnswers = [...student.answers];
+        newAnswers.splice(index, 1);
+        return { ...student, answers: newAnswers };
+    }));
+  };
+
+  const handleAddNewStudent = () => {
+    const newStudent: Student = {
+        id: `s${Date.now()}`,
+        name: `Student ${students.length + 1}`,
+        answers: Array(questions.length).fill("")
+    };
+    setStudents(prev => [...prev, newStudent]);
+  };
+
+  const handleUpdateStudent = (index: number, field: 'name' | 'answer', value: string, answerIndex?: number) => {
+    setStudents(prev => {
+      const newStudents = [...prev];
+      if (field === 'name') {
+        newStudents[index].name = value;
+      } else if (field === 'answer' && answerIndex !== undefined) {
+        newStudents[index].answers[answerIndex] = value;
+      }
+      return newStudents;
+    });
+  };
+
+  const handleRemoveStudent = (index: number) => {
+    setStudents(prev => prev.filter((_, i) => i !== index));
+  };
+
 
   const processAndSetGradedDoc = (doc: GradeDocumentOutput, student: Student, question: Question) => {
     const studentAnswer = student.answers[questions.findIndex(q => q.id === question.id)]
@@ -112,7 +170,7 @@ export default function GraderClient() {
         }[item.sentiment];
 
         const escapedSegment = item.segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(^|\\s|>)(${escapedSegment})(<|\\s|$)`, 'g');
+        const regex = new RegExp(`(^|\\s|>)(${escapedSegment})(<|\\s|$)`, 'gi');
 
         if (item.sentiment !== 'neutral') {
              highlightedAnswer = highlightedAnswer.replace(regex, `$1<mark id="${item.id}" class="${sentimentClass} p-1 rounded-md cursor-pointer transition-colors">${item.segment}</mark>$3`);
@@ -133,11 +191,12 @@ export default function GraderClient() {
   
   const handleGrade = async () => {
     if (questions.length === 0 || students.length === 0) {
-        toast({ title: "Missing Data", description: "Please load example data first.", variant: "destructive" });
+        toast({ title: "Missing Data", description: "Please add questions and students first.", variant: "destructive" });
         return;
     }
     setIsGrading(true);
     setGradingResults({}); // Clear previous results
+    toast({ title: "Grading Started", description: "Analyzing all student answers..." });
     try {
         for (const question of questions) {
             for (const student of students) {
@@ -158,7 +217,6 @@ export default function GraderClient() {
         toast({ title: "Grading Error", description: "Could not grade the documents. Please try again.", variant: "destructive" });
     } finally {
         setIsGrading(false);
-        setIsGradeDialogOpen(false);
     }
   };
 
@@ -284,7 +342,7 @@ export default function GraderClient() {
                         </ScrollArea>
                     ) : (
                         <div className="text-center text-muted-foreground py-10">
-                            {isDataLoaded ? 'Click "Start Grading" to see results.' : 'Load data to begin.'}
+                            {isDataLoaded ? 'Click "Start Grading" to see results.' : 'Add data to begin.'}
                         </div>
                     )}
                 </CardContent>
@@ -296,9 +354,9 @@ export default function GraderClient() {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                        <DropdownMenuTrigger asChild disabled={!isDataLoaded}>
                             <Button variant="outline">
-                                Question {activeQuestionIndex + 1}: {currentQuestion ? (currentQuestion.text.substring(0, 30) + '...') : 'Select Question'}
+                                {currentQuestion ? `Q${activeQuestionIndex + 1}: ${currentQuestion.text.substring(0, 30)}...` : 'No Questions'}
                                 <ChevronDown className="w-4 h-4 ml-2" />
                             </Button>
                         </DropdownMenuTrigger>
@@ -325,7 +383,7 @@ export default function GraderClient() {
                          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                             <GraduationCap className="w-16 h-16 mb-4"/>
                             <h2 className="text-xl font-semibold">Grade Documents</h2>
-                            <p className="text-sm">Click "Load Data" to start.</p>
+                            <p className="text-sm">Click the plus icon to add data.</p>
                         </div>
                     ) : (
                         <Tabs value={activeStudentId ?? undefined} onValueChange={setActiveStudentId} className="h-full flex flex-col">
@@ -348,7 +406,11 @@ export default function GraderClient() {
                                         <div className="p-4 font-body prose" onClick={handleHighlightClick} dangerouslySetInnerHTML={{ __html: currentGradingResult.highlightedAnswer.replace(/\n/g, '<br />') }}></div>
                                     </ScrollArea>
                                 ) : (
-                                    <div className="p-4">{s.answers[activeQuestionIndex]}</div>
+                                     <ScrollArea className="h-full">
+                                        <div className="p-4 font-body prose whitespace-pre-wrap">
+                                            {s.answers[activeQuestionIndex] ?? "No answer provided for this question."}
+                                        </div>
+                                    </ScrollArea>
                                 )}
                                 </TabsContent>
                             ))}
@@ -408,6 +470,83 @@ export default function GraderClient() {
         </div>
     </main>
   );
+  
+  const renderDataDialog = () => (
+    <Dialog open={isDataDialogOpen} onOpenChange={setIsDataDialogOpen}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+            <DialogHeader>
+                <DialogTitle>Manage Data</DialogTitle>
+            </DialogHeader>
+            <Tabs defaultValue="questions" className="flex-grow flex flex-col overflow-hidden">
+                <TabsList>
+                    <TabsTrigger value="questions">Questions ({questions.length})</TabsTrigger>
+                    <TabsTrigger value="students">Students ({students.length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="questions" className="flex-grow overflow-auto">
+                    <ScrollArea className="h-full pr-4">
+                        <Accordion type="multiple" className="w-full">
+                            {questions.map((q, index) => (
+                                <AccordionItem value={q.id} key={q.id}>
+                                    <AccordionTrigger>
+                                        <span className="truncate flex-1 text-left">Question {index + 1}: {q.text || "New Question"}</span>
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                        <div className="space-y-4 p-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor={`q-text-${q.id}`}>Question Text</Label>
+                                                <Textarea id={`q-text-${q.id}`} value={q.text} onChange={e => handleUpdateQuestion(index, 'text', e.target.value)} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor={`q-rubric-${q.id}`}>Rubric</Label>
+                                                <Textarea id={`q-rubric-${q.id}`} value={q.rubric} onChange={e => handleUpdateQuestion(index, 'rubric', e.target.value)} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor={`q-keywords-${q.id}`}>Keywords (comma-separated)</Label>
+                                                <Input id={`q-keywords-${q.id}`} value={q.keywords} onChange={e => handleUpdateQuestion(index, 'keywords', e.target.value)} />
+                                            </div>
+                                            <Button variant="destructive" size="sm" onClick={() => handleRemoveQuestion(index)}><Trash2 className="mr-2"/> Remove Question</Button>
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            ))}
+                        </Accordion>
+                        <Button onClick={handleAddNewQuestion} className="mt-4"><Plus className="mr-2"/> Add Question</Button>
+                    </ScrollArea>
+                </TabsContent>
+                <TabsContent value="students" className="flex-grow overflow-auto">
+                     <ScrollArea className="h-full pr-4">
+                        <Accordion type="multiple" className="w-full">
+                            {students.map((s, studentIndex) => (
+                                <AccordionItem value={s.id} key={s.id}>
+                                    <AccordionTrigger>
+                                        <Input value={s.name} onChange={e => handleUpdateStudent(studentIndex, 'name', e.target.value)} className="w-auto" onClick={e => e.stopPropagation()} />
+                                    </AccordionTrigger>
+                                    <AccordionContent>
+                                        <div className="space-y-4 p-2">
+                                            {questions.map((q, questionIndex) => (
+                                                <div key={q.id} className="space-y-2">
+                                                    <Label htmlFor={`s-answer-${s.id}-${q.id}`}>Answer for: "{q.text.substring(0,50)}..."</Label>
+                                                    <Textarea id={`s-answer-${s.id}-${q.id}`} value={s.answers[questionIndex] ?? ''} onChange={e => handleUpdateStudent(studentIndex, 'answer', e.target.value, questionIndex)} />
+                                                </div>
+                                            ))}
+                                            <Button variant="destructive" size="sm" onClick={() => handleRemoveStudent(studentIndex)}><Trash2 className="mr-2"/> Remove Student</Button>
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                            ))}
+                        </Accordion>
+                        <Button onClick={handleAddNewStudent} className="mt-4" disabled={questions.length === 0}><Plus className="mr-2"/> Add Student</Button>
+                        {questions.length === 0 && <p className="text-sm text-muted-foreground mt-2">Please add at least one question before adding students.</p>}
+                    </ScrollArea>
+                </TabsContent>
+            </Tabs>
+            <DialogFooter className="pt-4">
+                <Button variant="outline" onClick={loadExample}>Load Example Data</Button>
+                <Button onClick={() => setIsDataDialogOpen(false)}>Done</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+  );
 
   return (
     <TooltipProvider>
@@ -415,7 +554,10 @@ export default function GraderClient() {
         <header className="flex items-center justify-between p-4 border-b border-border print:hidden shrink-0">
           <h1 className="text-2xl font-headline font-bold">DocuCraft Grader</h1>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={loadExample}>Load Example Data</Button>
+             <Button variant="ghost" size="icon" onClick={() => setIsDataDialogOpen(true)}>
+                <Plus />
+                <span className="sr-only">Add or manage data</span>
+            </Button>
             <Button onClick={handleGrade} disabled={isGrading || !isDataLoaded}>
                 {isGrading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                 {isGrading ? "Grading..." : <><GraduationCap className="mr-2"/> Start Grading</>}
@@ -424,8 +566,11 @@ export default function GraderClient() {
         </header>
         
         {renderGrader()}
+        {renderDataDialog()}
 
       </div>
     </TooltipProvider>
   )
 }
+
+    
