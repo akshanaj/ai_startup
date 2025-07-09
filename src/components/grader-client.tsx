@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
+import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -16,25 +17,39 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-
-interface GradedDoc {
+interface Student {
     id: string;
-    question: string;
-    answer: string;
+    name: string;
+    answers: string[]; // answer[i] corresponds to question[i]
+}
+
+interface Question {
+    id: string;
+    text: string;
     rubric: string;
     keywords: string;
+}
+
+interface GradingResult {
     analysis: GradeDocumentOutput['analysis'];
     overallFeedback: string;
     score: number;
+    highlightedAnswer: string;
 }
 
 const example = {
-    question: "Explain the process of photosynthesis.",
-    rubric: "The explanation should be clear, accurate, and mention the roles of sunlight, water, carbon dioxide, chlorophyll, and the production of glucose and oxygen. Grading is out of 10 points.",
-    answer: "Photosynthesis is how plants eat. They take in sunlight and water through their roots, and CO2 from the air. This happens in the leaves, which are green because of chlorophyll. The plant then makes sugar for food and releases oxygen for us to breathe. Water is actually absorbed from the soil by the leaves, not the roots.",
-    keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen"
+    questions: [
+        { id: 'q1', text: "Explain the process of photosynthesis.", rubric: "The explanation should be clear, accurate, and mention the roles of sunlight, water, carbon dioxide, chlorophyll, and the production of glucose and oxygen. Grading is out of 10 points.", keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen" },
+        { id: 'q2', text: "What is the primary function of the mitochondria in a cell?", rubric: "The answer must state that mitochondria are responsible for generating most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy. Grading is out of 5 points.", keywords: "ATP, energy, powerhouse, cellular respiration" }
+    ],
+    students: [
+        { id: 's1', name: 'Alice', answers: ["Photosynthesis is how plants eat. They take in sunlight and water through their roots, and CO2 from the air. This happens in the leaves, which are green because of chlorophyll. The plant then makes sugar for food and releases oxygen for us to breathe.", "The mitochondria is the powerhouse of the cell, it makes energy."] },
+        { id: 's2', name: 'Bob', answers: ["Plants use photosynthesis to make food from the sun. Chlorophyll is important. They take in CO2 and release O2.", "Mitochondria produce ATP through a process called cellular respiration, providing the main energy source for the cell."] }
+    ]
 };
 
 interface ChatMessage {
@@ -46,32 +61,49 @@ export default function GraderClient() {
   const [isGrading, setIsGrading] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
-  
-  const [gradedDoc, setGradedDoc] = useState<GradedDoc | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [gradingResults, setGradingResults] = useState<Record<string, Record<string, GradingResult>>>({}); // [questionId][studentId]
 
-  const [gradeInput, setGradeInput] = useState<GradeDocumentInput>({ question: '', answer: '', rubric: '', keywords: '' });
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
+
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
-
   const { toast } = useToast()
 
+  const currentQuestion = questions[activeQuestionIndex];
+  const currentGradingResult = useMemo(() => {
+    if (!currentQuestion || !activeStudentId) return null;
+    return gradingResults[currentQuestion.id]?.[activeStudentId] ?? null;
+  }, [gradingResults, currentQuestion, activeStudentId]);
+
   useEffect(() => {
-    // Scroll to the bottom of the chat history when it updates
+    if (students.length > 0 && !activeStudentId) {
+        setActiveStudentId(students[0].id);
+    }
+  }, [students, activeStudentId]);
+
+  useEffect(() => {
     if (chatScrollAreaRef.current) {
         chatScrollAreaRef.current.scrollTo({ top: chatScrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [chatHistory]);
 
-
   const loadExample = () => {
-    setGradeInput(example);
+    setQuestions(example.questions);
+    setStudents(example.students);
+    setActiveQuestionIndex(0);
+    setActiveStudentId(example.students[0]?.id);
   };
 
-  const processAndSetGradedDoc = (doc: GradeDocumentOutput, input: GradeDocumentInput) => {
-    let highlightedAnswer = input.answer;
+  const processAndSetGradedDoc = (doc: GradeDocumentOutput, student: Student, question: Question) => {
+    const studentAnswer = student.answers[questions.findIndex(q => q.id === question.id)]
+    let highlightedAnswer = studentAnswer;
     doc.analysis.forEach(item => {
         const sentimentClass = {
             positive: "bg-green-200/50 hover:bg-green-300/80",
@@ -79,7 +111,6 @@ export default function GraderClient() {
             neutral: "bg-yellow-200/50 hover:bg-yellow-300/80"
         }[item.sentiment];
 
-        // Escape special characters in segment for regex
         const escapedSegment = item.segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`(^|\\s|>)(${escapedSegment})(<|\\s|$)`, 'g');
 
@@ -88,30 +119,43 @@ export default function GraderClient() {
         }
     });
 
-    setGradedDoc({
-        ...input,
-        id: `doc-${Date.now()}`,
-        answer: highlightedAnswer,
-        analysis: doc.analysis,
-        overallFeedback: doc.overallFeedback,
-        score: doc.score,
-    });
+    setGradingResults(prev => ({
+        ...prev,
+        [question.id]: {
+            ...prev[question.id],
+            [student.id]: {
+                ...doc,
+                highlightedAnswer
+            }
+        }
+    }));
   }
   
   const handleGrade = async () => {
-    if (!gradeInput.question.trim() || !gradeInput.answer.trim() || !gradeInput.rubric.trim()) {
-        toast({ title: "Missing fields", description: "Please provide a question, answer, and rubric.", variant: "destructive" });
+    if (questions.length === 0 || students.length === 0) {
+        toast({ title: "Missing Data", description: "Please load example data first.", variant: "destructive" });
         return;
     }
     setIsGrading(true);
-    setGradedDoc(null);
-    setChatHistory([]);
+    setGradingResults({}); // Clear previous results
     try {
-        const result = await gradeDocument(gradeInput);
-        processAndSetGradedDoc(result, gradeInput);
+        for (const question of questions) {
+            for (const student of students) {
+                const gradeInput: GradeDocumentInput = {
+                    question: question.text,
+                    answer: student.answers[questions.findIndex(q => q.id === question.id)],
+                    rubric: question.rubric,
+                    keywords: question.keywords,
+                    studentId: student.id,
+                    questionId: question.id,
+                };
+                const result = await gradeDocument(gradeInput);
+                processAndSetGradedDoc(result, student, question);
+            }
+        }
     } catch (error) {
         console.error("Grading error:", error);
-        toast({ title: "Grading Error", description: "Could not grade the document. Please try again.", variant: "destructive" });
+        toast({ title: "Grading Error", description: "Could not grade the documents. Please try again.", variant: "destructive" });
     } finally {
         setIsGrading(false);
         setIsGradeDialogOpen(false);
@@ -120,7 +164,10 @@ export default function GraderClient() {
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() || !gradedDoc) return;
+    if (!chatInput.trim() || !currentQuestion || !activeStudentId) return;
+
+    const student = students.find(s => s.id === activeStudentId);
+    if (!student || !currentGradingResult) return;
 
     const userMessage: ChatMessage = { role: 'user', message: chatInput };
     setChatHistory(prev => [...prev, userMessage]);
@@ -129,16 +176,20 @@ export default function GraderClient() {
 
     try {
         const currentAnalysis: GradeDocumentOutput = {
-            analysis: gradedDoc.analysis,
-            overallFeedback: gradedDoc.overallFeedback,
-            score: gradedDoc.score,
+            analysis: currentGradingResult.analysis,
+            overallFeedback: currentGradingResult.overallFeedback,
+            score: currentGradingResult.score,
         };
+        const studentAnswer = student.answers[questions.findIndex(q => q.id === currentQuestion.id)];
+
         const chatFlowInput: ChatWithDocumentInput = {
             document: {
-                question: gradedDoc.question,
-                answer: gradedDoc.answer.replace(/<[^>]*>/g, ''), // Send clean text
-                rubric: gradedDoc.rubric,
-                keywords: gradedDoc.keywords,
+                question: currentQuestion.text,
+                answer: studentAnswer,
+                rubric: currentQuestion.rubric,
+                keywords: currentQuestion.keywords,
+                studentId: student.id,
+                questionId: currentQuestion.id
             },
             currentAnalysis,
             userMessage: userMessage.message,
@@ -150,19 +201,11 @@ export default function GraderClient() {
         const modelMessage: ChatMessage = { role: 'model', message: result.llmResponse };
         setChatHistory(prev => [...prev, modelMessage]);
 
-        // Update the document with the refined analysis
-        processAndSetGradedDoc(result.updatedAnalysis, {
-            question: gradedDoc.question,
-            answer: gradedDoc.answer.replace(/<[^>]*>/g, ''), // Use clean answer for re-highlighting
-            rubric: gradedDoc.rubric,
-            keywords: gradedDoc.keywords,
-        });
-
+        processAndSetGradedDoc(result.updatedAnalysis, student, currentQuestion);
 
     } catch (error) {
         console.error("Chat error:", error);
         toast({ title: "Chat Error", description: "Could not get response from AI. Please try again.", variant: "destructive" });
-        // remove the user message if there was an error
         setChatHistory(prev => prev.slice(0, -1));
     } finally {
         setIsChatting(false);
@@ -176,7 +219,6 @@ export default function GraderClient() {
         const commentEl = document.getElementById(`comment-${target.id}`);
         if (commentEl) {
             commentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Add a temporary visual indicator
             commentEl.classList.add('ring-2', 'ring-primary');
             setTimeout(() => {
                 commentEl.classList.remove('ring-2', 'ring-primary');
@@ -184,6 +226,9 @@ export default function GraderClient() {
         }
     }
   };
+
+  const isDataLoaded = questions.length > 0 && students.length > 0;
+  const areResultsLoaded = Object.keys(gradingResults).length > 0;
   
   const renderGrader = () => (
     <main className="grid grid-cols-12 gap-4 p-4 flex-grow overflow-hidden">
@@ -200,7 +245,7 @@ export default function GraderClient() {
                             <Skeleton className="h-24 w-full" />
                             <Skeleton className="h-16 w-full" />
                         </div>
-                    ) : gradedDoc ? (
+                    ) : areResultsLoaded && currentGradingResult ? (
                         <ScrollArea className="h-[calc(100vh-200px)]">
                           <div className="space-y-4">
                               <Card>
@@ -208,17 +253,15 @@ export default function GraderClient() {
                                     <CardDescription>Overall Feedback</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <p className="text-sm">{gradedDoc.overallFeedback}</p>
-
+                                    <p className="text-sm">{currentGradingResult.overallFeedback}</p>
                                 </CardContent>
                               </Card>
-                              {gradedDoc.analysis.map((item) => {
+                              {currentGradingResult.analysis.map((item) => {
                                   const sentimentBorder = {
                                     positive: "border-green-500",
                                     negative: "border-red-500",
                                     neutral: "border-border"
                                   }[item.sentiment];
-
                                   return (
                                   <Card key={item.id} id={`comment-${item.id}`} className={`transition-shadow hover:shadow-lg ${activeCommentId === item.id ? 'border-primary' : sentimentBorder}`}
                                     onClick={() => {
@@ -241,7 +284,7 @@ export default function GraderClient() {
                         </ScrollArea>
                     ) : (
                         <div className="text-center text-muted-foreground py-10">
-                            Comments & feedback will appear here after grading.
+                            {isDataLoaded ? 'Click "Start Grading" to see results.' : 'Load data to begin.'}
                         </div>
                     )}
                 </CardContent>
@@ -249,37 +292,67 @@ export default function GraderClient() {
         </div>
 
         {/* Document Column */}
-        <div className="col-span-12 md:col-span-6 order-1 md:order-2 h-full overflow-y-auto">
-            <Card className="h-full">
-                 <CardHeader>
-                    {gradedDoc && (
-                         <div className="flex justify-between items-center">
-                            <CardTitle>Graded Document</CardTitle>
-                            <div className="text-2xl font-bold text-primary flex items-center gap-2">
-                                <Sparkles className="w-6 h-6" />
-                                <span>{gradedDoc.score} / 10</span>
-                            </div>
-                         </div>
+        <div className="col-span-12 md:col-span-6 order-1 md:order-2 h-full overflow-y-auto flex flex-col gap-4">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline">
+                                Question {activeQuestionIndex + 1}: {currentQuestion ? (currentQuestion.text.substring(0, 30) + '...') : 'Select Question'}
+                                <ChevronDown className="w-4 h-4 ml-2" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            {questions.map((q, index) => (
+                                <DropdownMenuItem key={q.id} onSelect={() => setActiveQuestionIndex(index)}>
+                                    Question {index + 1}: {q.text}
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                     {currentGradingResult && (
+                        <div className="text-2xl font-bold text-primary flex items-center gap-2">
+                            <Sparkles className="w-6 h-6" />
+                            <span>{currentGradingResult.score} / 10</span>
+                        </div>
                     )}
                 </CardHeader>
-                <CardContent className="p-6 h-full">
-                    {isGrading ? (
-                        <div className="space-y-4 p-8">
-                            <Skeleton className="h-8 w-3/4" />
-                            <Skeleton className="h-4 w-full" />
-                            <Skeleton className="h-4 w-full" />
-                            <Skeleton className="h-4 w-5/6" />
-                        </div>
-                    ) : gradedDoc ? (
-                        <ScrollArea className="h-[calc(100vh-200px)]">
-                            <div className="p-4 font-body prose" onClick={handleHighlightClick} dangerouslySetInnerHTML={{ __html: gradedDoc.answer.replace(/\n/g, '<br />') }}></div>
-                        </ScrollArea>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            </Card>
+            <Card className="flex-grow">
+                <CardContent className="p-0 h-full">
+                    {!isDataLoaded ? (
+                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                             <GraduationCap className="w-16 h-16 mb-4"/>
-                            <h2 className="text-xl font-semibold">Grade a Document</h2>
-                            <p className="text-sm">Click the "Grade Document" button to start.</p>
+                            <h2 className="text-xl font-semibold">Grade Documents</h2>
+                            <p className="text-sm">Click "Load Data" to start.</p>
                         </div>
+                    ) : (
+                        <Tabs value={activeStudentId ?? undefined} onValueChange={setActiveStudentId} className="h-full flex flex-col">
+                            <TabsList className="m-2">
+                                {students.map(s => (
+                                    <TabsTrigger key={s.id} value={s.id}>{s.name}</TabsTrigger>
+                                ))}
+                            </TabsList>
+                            {students.map(s => (
+                                <TabsContent key={s.id} value={s.id} className="flex-grow h-0">
+                                {isGrading ? (
+                                    <div className="space-y-4 p-8">
+                                        <Skeleton className="h-8 w-3/4" />
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-5/6" />
+                                    </div>
+                                ) : currentGradingResult ? (
+                                    <ScrollArea className="h-full">
+                                        <div className="p-4 font-body prose" onClick={handleHighlightClick} dangerouslySetInnerHTML={{ __html: currentGradingResult.highlightedAnswer.replace(/\n/g, '<br />') }}></div>
+                                    </ScrollArea>
+                                ) : (
+                                    <div className="p-4">{s.answers[activeQuestionIndex]}</div>
+                                )}
+                                </TabsContent>
+                            ))}
+                        </Tabs>
                     )}
                 </CardContent>
             </Card>
@@ -297,7 +370,7 @@ export default function GraderClient() {
                             {chatHistory.length === 0 && !isChatting && (
                                 <div className="text-center text-muted-foreground py-10">
                                     <Bot className="w-10 h-10 mx-auto mb-2"/>
-                                    <p>After grading a document, you can ask Gemini to refine its analysis here.</p>
+                                    <p>After grading, you can ask Gemini to refine its analysis here.</p>
                                 </div>
                             )}
                             {chatHistory.map((chat, index) => (
@@ -324,9 +397,9 @@ export default function GraderClient() {
                             placeholder="Ask to refine the grade..."
                             value={chatInput}
                             onChange={(e) => setChatInput(e.target.value)}
-                            disabled={!gradedDoc || isChatting}
+                            disabled={!currentGradingResult || isChatting}
                         />
-                        <Button type="submit" disabled={!gradedDoc || isChatting || !chatInput.trim()}>
+                        <Button type="submit" disabled={!currentGradingResult || isChatting || !chatInput.trim()}>
                             {isChatting ? <Loader2 className="animate-spin" /> : "Send"}
                         </Button>
                     </form>
@@ -341,41 +414,13 @@ export default function GraderClient() {
       <div className="flex flex-col h-screen bg-background text-foreground">
         <header className="flex items-center justify-between p-4 border-b border-border print:hidden shrink-0">
           <h1 className="text-2xl font-headline font-bold">DocuCraft Grader</h1>
-          <Dialog open={isGradeDialogOpen} onOpenChange={setIsGradeDialogOpen}>
-            <DialogTrigger asChild>
-                <Button><GraduationCap className="mr-2"/> Grade Document</Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
-                <DialogHeader>
-                    <DialogTitle>Grade a Document</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="question" className="text-right">Question</Label>
-                        <Textarea id="question" value={gradeInput.question} onChange={e => setGradeInput({...gradeInput, question: e.target.value})} className="col-span-3" placeholder="Enter the question..." />
-                    </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="rubric" className="text-right">Rubric</Label>
-                        <Textarea id="rubric" value={gradeInput.rubric} onChange={e => setGradeInput({...gradeInput, rubric: e.target.value})} className="col-span-3" placeholder="Enter the grading rubric, including total points (e.g., 'out of 10 points')..."/>
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="keywords" className="text-right">Keywords</Label>
-                        <Input id="keywords" value={gradeInput.keywords} onChange={e => setGradeInput({...gradeInput, keywords: e.target.value})} className="col-span-3" placeholder="Optional: comma-separated keywords..."/>
-                    </div>
-                    <div className="grid grid-cols-4 items-start gap-4">
-                        <Label htmlFor="answer" className="text-right pt-2">Answer</Label>
-                        <Textarea id="answer" value={gradeInput.answer} onChange={e => setGradeInput({...gradeInput, answer: e.target.value})} className="col-span-3 min-h-[200px]" placeholder="Paste the answer text here."/>
-                    </div>
-                </div>
-                <DialogFooter className="sm:justify-between">
-                    <Button variant="ghost" onClick={loadExample}>Load Example</Button>
-                    <Button type="submit" onClick={handleGrade} disabled={isGrading}>
-                        {isGrading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-                        {isGrading ? "Grading..." : "Grade"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={loadExample}>Load Example Data</Button>
+            <Button onClick={handleGrade} disabled={isGrading || !isDataLoaded}>
+                {isGrading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                {isGrading ? "Grading..." : <><GraduationCap className="mr-2"/> Start Grading</>}
+            </Button>
+          </div>
         </header>
         
         {renderGrader()}

@@ -64,7 +64,7 @@ const gradeDocumentFlow = ai.defineFlow(
     // Ensure each analysis item has a unique ID.
     const analysisWithIds = output.analysis.map((item, index) => ({
       ...item,
-      id: `segment-${index}-${Date.now()}`,
+      id: `segment-${input.studentId}-${input.questionId}-${index}-${Date.now()}`,
     }));
     
     return {

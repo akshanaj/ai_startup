@@ -10,6 +10,8 @@ export const GradeDocumentInputSchema = z.object({
   answer: z.string().describe('The answer text to be graded.'),
   rubric: z.string().describe('The grading rubric or criteria, which should include the total possible points (e.g., "out of 10 points").'),
   keywords: z.string().optional().describe('Optional keywords to look for.'),
+  studentId: z.string().describe('The ID of the student being graded.'),
+  questionId: z.string().describe('The ID of the question being graded.'),
 });
 export type GradeDocumentInput = z.infer<typeof GradeDocumentInputSchema>;
 
