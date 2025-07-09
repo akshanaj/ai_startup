@@ -5,14 +5,14 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2 } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface Student {
     id: string;
@@ -78,6 +79,14 @@ export default function GraderClient() {
   const [chatInput, setChatInput] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // State for the new data dialog
+  const [studentCount, setStudentCount] = useState(2);
+  const [questionCount, setQuestionCount] = useState(2);
+  const [pastedText, setPastedText] = useState("");
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [validationWarning, setValidationWarning] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast()
 
@@ -137,32 +146,6 @@ export default function GraderClient() {
     }));
   };
 
-  const handleAddNewStudent = () => {
-    const newStudent: Student = {
-        id: `s${Date.now()}`,
-        name: `Student ${students.length + 1}`,
-        answers: Array(questions.length).fill("")
-    };
-    setStudents(prev => [...prev, newStudent]);
-  };
-
-  const handleUpdateStudent = (index: number, field: 'name' | 'answer', value: string, answerIndex?: number) => {
-    setStudents(prev => {
-      const newStudents = [...prev];
-      if (field === 'name') {
-        newStudents[index].name = value;
-      } else if (field === 'answer' && answerIndex !== undefined) {
-        newStudents[index].answers[answerIndex] = value;
-      }
-      return newStudents;
-    });
-  };
-
-  const handleRemoveStudent = (index: number) => {
-    setStudents(prev => prev.filter((_, i) => i !== index));
-  };
-
-
   const processAndSetGradedDoc = (doc: GradeDocumentOutput, student: Student, question: Question) => {
     const studentAnswer = student.answers[questions.findIndex(q => q.id === question.id)]
     let highlightedAnswer = studentAnswer;
@@ -219,9 +202,14 @@ export default function GraderClient() {
     try {
         for (const question of questions) {
             for (const student of students) {
+                const answerIndex = questions.findIndex(q => q.id === question.id);
+                if (answerIndex === -1 || !student.answers[answerIndex]) {
+                  console.warn(`Skipping grading for ${student.name} on question "${question.text}" due to missing answer.`);
+                  continue;
+                }
                 const gradeInput: GradeDocumentInput = {
                     question: question.text,
-                    answer: student.answers[questions.findIndex(q => q.id === question.id)],
+                    answer: student.answers[answerIndex],
                     rubric: `${question.rubric} Grading is out of ${question.maxPoints} points.`,
                     keywords: question.keywords,
                     studentId: student.id,
@@ -303,6 +291,57 @@ export default function GraderClient() {
         }
     }
   };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+        setUploadedFiles(Array.from(event.target.files));
+        setValidationWarning(null);
+    }
+  };
+  
+  const parseAndSetStudents = async () => {
+    let parsedStudents: Student[] = [];
+    let detectedCount = 0;
+
+    const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
+
+    if (activeTab === 'paste-text') {
+        const studentBlocks = pastedText.split(/Student Name/i).filter(block => block.trim() !== "");
+        detectedCount = studentBlocks.length;
+        parsedStudents = studentBlocks.map((block, index) => {
+            const lines = block.trim().split('\n');
+            const name = lines[0].trim().replace('•', '').trim() || `Student ${index + 1}`;
+            const answers = lines.slice(1).map(line => line.replace(/•/g, '').trim()).filter(Boolean);
+            return { id: `s${Date.now()}${index}`, name, answers };
+        });
+    } else { // File Upload
+        detectedCount = uploadedFiles.length;
+        const studentPromises = uploadedFiles.map(async (file, index) => {
+            const text = await file.text();
+            const answers = text.split('\n').map(line => line.replace(/•/g, '').trim()).filter(Boolean);
+            const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`; // filename without extension
+            return { id: `s${Date.now()}${index}`, name, answers };
+        });
+        parsedStudents = await Promise.all(studentPromises);
+    }
+
+    if (detectedCount < studentCount) {
+        setValidationWarning(`Only ${detectedCount} out of ${studentCount} student answers provided.`);
+        setStudents(parsedStudents); // Set what we have, so user can choose to continue
+        return; // Stop here and wait for user action
+    }
+
+    setStudents(parsedStudents);
+    setIsDataDialogOpen(false);
+    setValidationWarning(null);
+    toast({title: "Student Data Updated", description: `${parsedStudents.length} students loaded.`});
+  };
+
+  const handleContinueAnyway = () => {
+    setIsDataDialogOpen(false);
+    setValidationWarning(null);
+    toast({title: "Student Data Updated", description: `${students.length} students loaded.`});
+  }
 
   const isDataLoaded = questions.length > 0 && students.length > 0;
   const areResultsLoaded = Object.keys(gradingResults).length > 0;
@@ -517,15 +556,16 @@ export default function GraderClient() {
   );
   
   const renderDataDialog = () => (
-    <Dialog open={isDataDialogOpen} onOpenChange={setIsDataDialogOpen}>
+    <Dialog open={isDataDialogOpen} onOpenChange={(open) => { setIsDataDialogOpen(open); if (!open) setValidationWarning(null); }}>
         <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
             <DialogHeader>
                 <DialogTitle>Manage Data</DialogTitle>
+                <CardDescription>Add questions and student answers here.</CardDescription>
             </DialogHeader>
             <Tabs defaultValue="questions" className="flex-grow flex flex-col overflow-hidden">
-                <TabsList>
+                <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="questions">Questions ({questions.length})</TabsTrigger>
-                    <TabsTrigger value="students">Answers ({students.length})</TabsTrigger>
+                    <TabsTrigger value="answers">Student Answers ({students.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="flex-grow overflow-auto">
                     <ScrollArea className="h-full pr-4">
@@ -564,40 +604,113 @@ export default function GraderClient() {
                         <Button onClick={handleAddNewQuestion} className="mt-4"><Plus className="mr-2"/> Add Question</Button>
                     </ScrollArea>
                 </TabsContent>
-                <TabsContent value="students" className="flex-grow overflow-auto">
-                     <ScrollArea className="h-full pr-4">
-                        <Accordion type="multiple" className="w-full">
-                            {students.map((s, studentIndex) => (
-                                <AccordionItem value={s.id} key={s.id}>
-                                    <AccordionTrigger>
-                                       {s.name}
-                                    </AccordionTrigger>
-                                    <AccordionContent>
-                                        <div className="space-y-4 p-2">
-                                            <div className="space-y-2">
-                                                <Label htmlFor={`s-name-${s.id}`}>Student Name</Label>
-                                                <Input id={`s-name-${s.id}`} value={s.name} onChange={e => handleUpdateStudent(studentIndex, 'name', e.target.value)} />
-                                            </div>
-                                            {questions.map((q, questionIndex) => (
-                                                <div key={q.id} className="space-y-2">
-                                                    <Label htmlFor={`s-answer-${s.id}-${q.id}`}>Answer for: "{q.text.substring(0,50)}..."</Label>
-                                                    <Textarea id={`s-answer-${s.id}-${q.id}`} value={s.answers[questionIndex] ?? ''} onChange={e => handleUpdateStudent(studentIndex, 'answer', e.target.value, questionIndex)} />
-                                                </div>
-                                            ))}
-                                            <Button variant="destructive" size="sm" onClick={() => handleRemoveStudent(studentIndex)}><Trash2 className="mr-2"/> Remove Student</Button>
-                                        </div>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            ))}
-                        </Accordion>
-                        <Button onClick={handleAddNewStudent} className="mt-4" disabled={questions.length === 0}><Plus className="mr-2"/> Add Student</Button>
-                        {questions.length === 0 && <p className="text-sm text-muted-foreground mt-2">Please add at least one question before adding students.</p>}
-                    </ScrollArea>
+                <TabsContent value="answers" className="flex-grow flex flex-col overflow-auto p-1">
+                     <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="student-count">Total number of students</Label>
+                            <Input id="student-count" type="number" value={studentCount} onChange={e => setStudentCount(parseInt(e.target.value, 10) || 0)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="question-count">Total number of questions per student</Label>
+                            <Input id="question-count" type="number" value={questionCount} onChange={e => setQuestionCount(parseInt(e.target.value, 10) || 0)} disabled />
+                            <p className="text-xs text-muted-foreground">Syncs with the number of questions added.</p>
+                        </div>
+                     </div>
+                     <Tabs defaultValue="paste-text" className="flex-grow flex flex-col">
+                        <TabsList className="grid w-full grid-cols-2">
+                           <TabsTrigger value="paste-text">Paste Text</TabsTrigger>
+                           <TabsTrigger value="file-upload">File Upload</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="paste-text" className="flex-grow flex flex-col">
+                            <Card className="mt-2">
+                                <CardHeader>
+                                    <CardTitle className="text-base flex items-center gap-2">Formatting Guide 
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger><Info className="w-4 h-4 text-muted-foreground"/></TooltipTrigger>
+                                            <TooltipContent>
+                                                <p className="max-w-xs">Each student's entry starts with "Student Name", followed by their answers as bullet points on new lines. The parser is case-insensitive to "Student Name".</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    </CardTitle>
+                                    <CardDescription className="text-xs">
+                                        <code className="block whitespace-pre-wrap p-2 rounded bg-muted">
+                                            Student Name Alice<br/>
+                                            • Answer 1...<br/>
+                                            • Answer 2...<br/>
+                                            Student Name Bob<br/>
+                                            • Answer 1...<br/>
+                                        </code>
+                                    </CardDescription>
+                                </CardHeader>
+                            </Card>
+                            <Textarea 
+                                className="flex-grow mt-2" 
+                                placeholder="Paste all student answers here..."
+                                value={pastedText}
+                                onChange={e => {setPastedText(e.target.value); setValidationWarning(null);}}
+                            />
+                        </TabsContent>
+                        <TabsContent value="file-upload" className="flex-grow flex flex-col">
+                            <Card className="mt-2">
+                                <CardHeader>
+                                    <CardTitle className="text-base flex items-center gap-2">Formatting Guide
+                                      <TooltipProvider>
+                                          <Tooltip>
+                                              <TooltipTrigger><Info className="w-4 h-4 text-muted-foreground"/></TooltipTrigger>
+                                              <TooltipContent>
+                                                  <p className="max-w-xs">Upload one .txt file per student. The student's name will be the filename. Each line in the file is treated as an answer to a question, in order.</p>
+                                              </TooltipContent>
+                                          </Tooltip>
+                                      </TooltipProvider>
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                        <FileUp className="mr-2" />
+                                        Upload Files ({uploadedFiles.length})
+                                    </Button>
+                                    <Input 
+                                        type="file" 
+                                        multiple 
+                                        ref={fileInputRef} 
+                                        className="hidden" 
+                                        onChange={handleFileChange}
+                                        accept=".txt"
+                                    />
+                                    <ScrollArea className="mt-2 h-32 w-full rounded-md border p-2">
+                                        {uploadedFiles.length > 0 ? (
+                                            <ul>
+                                                {uploadedFiles.map((file, i) => <li key={i} className="text-sm">{file.name}</li>)}
+                                            </ul>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground text-center py-10">No files uploaded.</p>
+                                        )}
+                                    </ScrollArea>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                     </Tabs>
                 </TabsContent>
             </Tabs>
+             {validationWarning && (
+                <Alert variant="destructive" className="mt-4">
+                    <AlertTitle>Warning</AlertTitle>
+                    <AlertDescription>
+                        {validationWarning}
+                        <div className="flex gap-2 mt-2">
+                           <Button variant="outline" size="sm" onClick={() => setValidationWarning(null)}>Go Back and Fix</Button>
+                           <Button size="sm" onClick={handleContinueAnyway}>Continue Anyway</Button>
+                        </div>
+                    </AlertDescription>
+                </Alert>
+            )}
             <DialogFooter className="pt-4">
                 <Button variant="outline" onClick={loadExample}>Load Example Data</Button>
-                <Button onClick={() => setIsDataDialogOpen(false)}>Done</Button>
+                <Button onClick={validationWarning ? undefined : parseAndSetStudents} disabled={!!validationWarning}>
+                  {validationWarning ? 'Resolve Warning' : 'Update Student Answers'}
+                </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
@@ -627,3 +740,5 @@ export default function GraderClient() {
     </TooltipProvider>
   )
 }
+
+    
