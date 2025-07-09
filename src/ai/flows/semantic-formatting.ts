@@ -4,28 +4,11 @@
  * @fileOverview This file contains the Genkit flow for semantic formatting of text.
  *
  * - semanticFormat - A function that takes text as input and returns semantically formatted text.
- * - SemanticFormatInput - The input type for the semanticFormat function.
- * - SemanticFormatOutput - The return type for the semanticFormat function.
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { SemanticFormatInput, SemanticFormatInputSchema, SemanticFormatOutput, SemanticFormatOutputSchema } from '@/ai/types';
 
-const SemanticFormatInputSchema = z.object({
-  text: z.string().describe('The text to be semantically formatted.'),
-  style: z
-    .string()
-    .optional()
-    .describe(
-      'The style to use for formatting the text, such as document, report, email, etc. Defaults to document if not provided.'
-    ),
-});
-export type SemanticFormatInput = z.infer<typeof SemanticFormatInputSchema>;
-
-const SemanticFormatOutputSchema = z.object({
-  formattedText: z.string().describe('The semantically formatted text.'),
-});
-export type SemanticFormatOutput = z.infer<typeof SemanticFormatOutputSchema>;
 
 export async function semanticFormat(input: SemanticFormatInput): Promise<SemanticFormatOutput> {
   return semanticFormatFlow(input);

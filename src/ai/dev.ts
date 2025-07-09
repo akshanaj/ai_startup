@@ -3,3 +3,4 @@ config();
 
 import '@/ai/flows/style-transfer.ts';
 import '@/ai/flows/semantic-formatting.ts';
+import '@/ai/flows/grade-document.ts';

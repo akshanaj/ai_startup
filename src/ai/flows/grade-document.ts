@@ -1,0 +1,66 @@
+'use server';
+
+/**
+ * @fileOverview This file contains the Genkit flow for grading a document based on a rubric.
+ *
+ * - gradeDocument - A function that takes a question, answer, and rubric to generate feedback.
+ */
+
+import {ai} from '@/ai/genkit';
+import { GradeDocumentInput, GradeDocumentInputSchema, GradeDocumentOutput, GradeDocumentOutputSchema } from '@/ai/types';
+
+export async function gradeDocument(input: GradeDocumentInput): Promise<GradeDocumentOutput> {
+  return gradeDocumentFlow(input);
+}
+
+const prompt = ai.definePrompt({
+  name: 'gradeDocumentPrompt',
+  input: {schema: GradeDocumentInputSchema},
+  output: {schema: GradeDocumentOutputSchema},
+  prompt: `You are an expert teaching assistant. Your task is to grade a student's answer based on a given question and rubric.
+
+  First, analyze the provided answer and identify key segments that directly relate to the rubric and question. For each segment you identify, you MUST provide a comment explaining its significance, how it meets (or fails to meet) the rubric, and what makes it stand out. Create a unique ID for each segment.
+
+  After analyzing all segments, provide overall feedback on the answer.
+
+  **Question:**
+  {{{question}}}
+
+  **Grading Rubric:**
+  {{{rubric}}}
+
+  {{#if keywords}}
+  **Keywords to consider:**
+  {{{keywords}}}
+  {{/if}}
+
+  **Student's Answer:**
+  {{{answer}}}
+  `,
+});
+
+const gradeDocumentFlow = ai.defineFlow(
+  {
+    name: 'gradeDocumentFlow',
+    inputSchema: GradeDocumentInputSchema,
+    outputSchema: GradeDocumentOutputSchema,
+  },
+  async input => {
+    const {output} = await prompt(input);
+
+    if (!output) {
+      throw new Error('The AI model did not return a valid response.');
+    }
+
+    // Ensure each analysis item has a unique ID.
+    const analysisWithIds = output.analysis.map((item, index) => ({
+      ...item,
+      id: `segment-${index}-${Date.now()}`,
+    }));
+    
+    return {
+        ...output,
+        analysis: analysisWithIds,
+    };
+  }
+);
