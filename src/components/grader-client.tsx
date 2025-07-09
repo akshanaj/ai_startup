@@ -305,22 +305,38 @@ export default function GraderClient() {
     const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
 
     if (activeTab === 'paste-text') {
-        const studentBlocks = pastedText.split(/Student Name/i).filter(block => block.trim() !== "");
-        detectedCount = studentBlocks.length;
-        parsedStudents = studentBlocks.map((block, index) => {
-            const lines = block.trim().split('\n');
-            const name = lines[0].trim().replace(/•/g, '').trim() || `Student ${index + 1}`;
-            const answerText = lines.slice(1).join('\n').trim();
-            const answers = answerText.split(/•/g).map(a => a.trim()).filter(Boolean);
-            
-            // If no bullet points, split by number of questions
-            if (answers.length <= 1 && questions.length > 1 && answerText) {
-                // A simple heuristic: split by double newlines or just chunk it.
-                let potentialAnswers = answerText.split(/\n\s*\n/);
+        // More flexible regex to find "Student <Name/ID>" followed by a colon or space
+        const studentBlocks = pastedText.split(/Student\s(?:Name\s)?([A-Za-z0-9]+)[:\s]*/i).filter(s => s.trim());
+        
+        let names: string[] = [];
+        let answersBlocks: string[] = [];
+
+        // The regex split results in an array of [name, answers, name, answers, ...]
+        for (let i = 0; i < studentBlocks.length; i += 2) {
+            names.push(studentBlocks[i].trim() || `Student ${names.length + 1}`);
+            answersBlocks.push(studentBlocks[i + 1] ? studentBlocks[i + 1].trim() : "");
+        }
+
+        detectedCount = names.length;
+
+        parsedStudents = names.map((name, index) => {
+            const answerText = answersBlocks[index] || "";
+            let answers: string[] = [];
+
+            // If there's more than one question, attempt to split the answer block
+            if (questions.length > 1 && answerText) {
+                // Heuristic: try splitting by bullet points first
+                let potentialAnswers = answerText.split(/•/g).map(a => a.trim()).filter(Boolean);
+                
+                // If not bullet points, try splitting by double newlines
                 if (potentialAnswers.length < questions.length) {
-                    // Fallback for single block of text
-                     const words = answerText.split(' ');
-                     const wordsPerAnswer = Math.floor(words.length / questions.length);
+                    potentialAnswers = answerText.split(/\n\s*\n/).map(a => a.trim()).filter(Boolean);
+                }
+
+                // If still not enough, chunk the text as a last resort
+                if (potentialAnswers.length < questions.length) {
+                     const words = answerText.split(/\s+/);
+                     const wordsPerAnswer = Math.max(1, Math.floor(words.length / questions.length));
                      potentialAnswers = [];
                      for (let i = 0; i < questions.length; i++) {
                         const start = i * wordsPerAnswer;
@@ -328,16 +344,21 @@ export default function GraderClient() {
                         potentialAnswers.push(words.slice(start, end).join(' '));
                      }
                 }
-                return { id: `s${Date.now()}${index}`, name, answers: potentialAnswers.slice(0, questions.length) };
+                answers = potentialAnswers.slice(0, questions.length);
+
+            } else {
+                 answers = [answerText];
             }
 
             return { id: `s${Date.now()}${index}`, name, answers };
         });
+        
     } else { // File Upload
         detectedCount = uploadedFiles.length;
         const studentPromises = uploadedFiles.map(async (file, index) => {
             const text = await file.text();
-            const answers = text.split('\n').map(line => line.replace(/•/g, '').trim()).filter(Boolean);
+            // Assuming each line in file is an answer
+            const answers = text.split('\n').map(line => line.trim()).filter(Boolean);
             const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`; // filename without extension
             return { id: `s${Date.now()}${index}`, name, answers };
         });
@@ -650,14 +671,14 @@ export default function GraderClient() {
                                             </PopoverTrigger>
                                             <PopoverContent>
                                                 <div className="p-2 text-sm space-y-2">
-                                                    <p className="font-bold">Each student's entry starts with "Student Name", followed by their answers on new lines. The parser is case-insensitive to "Student Name" and will divide the text among the questions.</p>
+                                                    <p className="font-bold">Each student's entry starts with "Student" and a name/ID, followed by their answers. The parser will attempt to divide the text among the questions.</p>
                                                     <code className="block whitespace-pre-wrap p-2 rounded bg-muted mt-2 text-xs">
-                                                        Student Name Alice<br/>
+                                                        Student A:<br/>
                                                         Answer to Question 1...<br/>
                                                         Answer to Question 2...<br/>
                                                         <br/>
                                                         Student Name Bob<br/>
-                                                        Answer to Question 1...<br/>
+                                                        Answer 1...<br/>
                                                     </code>
                                                 </div>
                                             </PopoverContent>
