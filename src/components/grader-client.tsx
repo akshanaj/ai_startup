@@ -82,7 +82,6 @@ export default function GraderClient() {
 
   // State for the new data dialog
   const [studentCount, setStudentCount] = useState(2);
-  const [questionCount, setQuestionCount] = useState(2);
   const [pastedText, setPastedText] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
@@ -612,7 +611,7 @@ export default function GraderClient() {
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="question-count">Total number of questions per student</Label>
-                            <Input id="question-count" type="number" value={questionCount} onChange={e => setQuestionCount(parseInt(e.target.value, 10) || 0)} disabled />
+                            <Input id="question-count" type="number" value={questions.length} disabled />
                             <p className="text-xs text-muted-foreground">Syncs with the number of questions added.</p>
                         </div>
                      </div>
@@ -740,5 +739,3 @@ export default function GraderClient() {
     </TooltipProvider>
   )
 }
-
-    
