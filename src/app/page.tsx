@@ -1,5 +1,5 @@
-import DocuCraftClient from '@/components/docu-craft-client';
+import GraderClient from '@/components/grader-client';
 
 export default function Home() {
-  return <DocuCraftClient />;
+  return <GraderClient />;
 }

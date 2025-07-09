@@ -24,34 +24,3 @@ export const GradeDocumentOutputSchema = z.object({
   overallFeedback: z.string().describe('A summary of the overall feedback.'),
 });
 export type GradeDocumentOutput = z.infer<typeof GradeDocumentOutputSchema>;
-
-
-// SemanticFormat flow types
-export const SemanticFormatInputSchema = z.object({
-    text: z.string().describe('The text to be semantically formatted.'),
-    style: z
-      .string()
-      .optional()
-      .describe(
-        'The style to use for formatting the text, such as document, report, email, etc. Defaults to document if not provided.'
-      ),
-  });
-export type SemanticFormatInput = z.infer<typeof SemanticFormatInputSchema>;
-  
-export const SemanticFormatOutputSchema = z.object({
-    formattedText: z.string().describe('The semantically formatted text.'),
-});
-export type SemanticFormatOutput = z.infer<typeof SemanticFormatOutputSchema>;
-
-
-// ApplyStyle flow types
-export const ApplyStyleInputSchema = z.object({
-    text: z.string().describe('The text to be formatted.'),
-    style: z.string().describe('The style to apply to the text.'),
-});
-export type ApplyStyleInput = z.infer<typeof ApplyStyleInputSchema>;
-  
-export const ApplyStyleOutputSchema = z.object({
-    formattedText: z.string().describe('The text formatted with the selected style.'),
-});
-export type ApplyStyleOutput = z.infer<typeof ApplyStyleOutputSchema>;
