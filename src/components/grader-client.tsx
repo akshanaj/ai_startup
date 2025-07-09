@@ -30,7 +30,7 @@ interface GradedDoc {
 const example = {
     question: "Explain the process of photosynthesis.",
     rubric: "The explanation should be clear, accurate, and mention the roles of sunlight, water, carbon dioxide, chlorophyll, and the production of glucose and oxygen. Grading is out of 10 points.",
-    answer: "Photosynthesis is how plants eat. They take in sunlight and water through their roots, and CO2 from the air. This happens in the leaves, which are green because of chlorophyll. The plant then makes sugar for food and releases oxygen for us to breathe.",
+    answer: "Photosynthesis is how plants eat. They take in sunlight and water through their roots, and CO2 from the air. This happens in the leaves, which are green because of chlorophyll. The plant then makes sugar for food and releases oxygen for us to breathe. Water is actually absorbed from the soil by the leaves, not the roots.",
     keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen"
 };
 
@@ -60,7 +60,15 @@ export default function GraderClient() {
         
         let highlightedAnswer = gradeInput.answer;
         result.analysis.forEach(item => {
-            highlightedAnswer = highlightedAnswer.replace(item.segment, `<mark id="${item.id}" class="bg-yellow-200/50 p-1 rounded-md cursor-pointer hover:bg-yellow-300/80 transition-colors">${item.segment}</mark>`);
+            const sentimentClass = {
+                positive: "bg-green-200/50 hover:bg-green-300/80",
+                negative: "bg-red-200/50 hover:bg-red-300/80",
+                neutral: "bg-yellow-200/50 hover:bg-yellow-300/80"
+            }[item.sentiment];
+
+            if (sentimentClass !== "bg-yellow-200/50 hover:bg-yellow-300/80'") { // Don't highlight neutral
+                highlightedAnswer = highlightedAnswer.replace(item.segment, `<mark id="${item.id}" class="${sentimentClass} p-1 rounded-md cursor-pointer transition-colors">${item.segment}</mark>`);
+            }
         });
 
         setGradedDoc({
@@ -123,8 +131,15 @@ export default function GraderClient() {
                                     <p className="text-sm">{gradedDoc.overallFeedback}</p>
                                 </CardContent>
                               </Card>
-                              {gradedDoc.analysis.map((item) => (
-                                  <Card key={item.id} id={`comment-${item.id}`} className={`transition-shadow hover:shadow-lg ${activeCommentId === item.id ? 'border-primary' : ''}`}
+                              {gradedDoc.analysis.map((item) => {
+                                  const sentimentBorder = {
+                                    positive: "border-green-500",
+                                    negative: "border-red-500",
+                                    neutral: "border-border"
+                                  }[item.sentiment];
+
+                                  return (
+                                  <Card key={item.id} id={`comment-${item.id}`} className={`transition-shadow hover:shadow-lg ${activeCommentId === item.id ? 'border-primary' : sentimentBorder}`}
                                     onClick={() => {
                                         const markEl = document.getElementById(item.id);
                                         if (markEl) {
@@ -140,7 +155,7 @@ export default function GraderClient() {
                                           <p className="text-sm">{item.comment}</p>
                                       </CardContent>
                                   </Card>
-                              ))}
+                              )})}
                           </div>
                         </ScrollArea>
                     ) : (

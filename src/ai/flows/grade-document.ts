@@ -19,7 +19,14 @@ const prompt = ai.definePrompt({
   output: {schema: GradeDocumentOutputSchema},
   prompt: `You are an expert teaching assistant. Your task is to grade a student's answer based on a given question and rubric. The rubric includes a total possible score.
 
-  First, analyze the provided answer and identify key segments that directly relate to the rubric and question. For each segment you identify, you MUST provide a comment explaining its significance, how it meets (or fails to meet) the rubric, and what makes it stand out. Create a unique ID for each segment.
+  First, analyze the provided answer and identify key segments that directly relate to the rubric and question. For each segment you identify, you MUST provide a comment explaining its significance, how it meets (or fails to meet) the rubric, and what makes it stand out. 
+
+  Crucially, for each segment, you must also determine the sentiment of your feedback. 
+  - Use 'positive' if the segment is correct, well-explained, or aligns with the rubric.
+  - Use 'negative' if the segment is inaccurate, misses key points, or contradicts the rubric.
+  - Use 'neutral' for general observations or contextual comments that are neither strictly positive nor negative.
+  
+  Create a unique ID for each segment.
 
   After analyzing all segments, provide overall feedback on the answer.
 

@@ -19,6 +19,7 @@ export const GradeDocumentOutputSchema = z.object({
       id: z.string().describe('A unique ID for the highlighted segment.'),
       segment: z.string().describe('The highlighted portion of the answer text.'),
       comment: z.string().describe('The AI-generated comment explaining why this segment was highlighted.'),
+      sentiment: z.enum(['positive', 'negative', 'neutral']).describe("The sentiment of the comment. Use 'positive' for correct points, 'negative' for inaccuracies, and 'neutral' for general observations."),
     })
   ).describe('An array of text segments from the answer that are noteworthy, along with comments.'),
   overallFeedback: z.string().describe('A summary of the overall feedback.'),
