@@ -63,6 +63,35 @@ interface ChatMessage {
     message: string;
 }
 
+// Custom hook for state with localStorage persistence
+function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    const [state, setState] = useState<T>(() => {
+        if (typeof window === 'undefined') {
+            return defaultValue;
+        }
+        try {
+            const storedValue = window.localStorage.getItem(key);
+            return storedValue ? JSON.parse(storedValue) : defaultValue;
+        } catch (error) {
+            console.error("Error reading from localStorage", error);
+            return defaultValue;
+        }
+    });
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                window.localStorage.setItem(key, JSON.stringify(state));
+            } catch (error) {
+                console.error("Error writing to localStorage", error);
+            }
+        }
+    }, [key, state]);
+
+    return [state, setState];
+}
+
+
 export default function GraderClient({ assignmentId }: { assignmentId: string }) {
   const [isGrading, setIsGrading] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
@@ -70,15 +99,16 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const [isScorePopoverOpen, setIsScorePopoverOpen] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [gradingResults, setGradingResults] = useState<Record<string, Record<string, GradingResult>>>({}); // [questionId][studentId]
-
+  const [assignmentName, setAssignmentName] = usePersistentState(`${assignmentId}-name`, "Untitled Assignment");
+  const [questions, setQuestions] = usePersistentState<Question[]>(`${assignmentId}-questions`, []);
+  const [students, setStudents] = usePersistentState<Student[]>(`${assignmentId}-students`, []);
+  const [gradingResults, setGradingResults] = usePersistentState<Record<string, Record<string, GradingResult>>>(`${assignmentId}-results`, {}); // [questionId][studentId]
+  const [chatHistory, setChatHistory] = usePersistentState<ChatMessage[]>(`${assignmentId}-chat`, []);
+  
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null);
 
   const [chatInput, setChatInput] = useState("");
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
   // State for the new data dialog
@@ -198,6 +228,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
     setIsGrading(true);
     setGradingResults({}); // Clear previous results
+    setChatHistory([]); // Clear chat history on new grade
     toast({ title: "Grading Started", description: "Analyzing all student answers..." });
     try {
         for (const question of questions) {
@@ -770,7 +801,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                 </Button>
             </Link>
             <h1 className="text-xl font-headline font-bold text-gray-800">
-              Untitled Assignment
+              {assignmentName}
             </h1>
           </div>
           <div className="flex items-center gap-2">
