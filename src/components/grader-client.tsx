@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -24,6 +24,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import Link from "next/link"
 
 interface Student {
     id: string;
@@ -62,7 +63,7 @@ interface ChatMessage {
     message: string;
 }
 
-export default function GraderClient() {
+export default function GraderClient({ assignmentId }: { assignmentId: string }) {
   const [isGrading, setIsGrading] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
@@ -761,7 +762,17 @@ export default function GraderClient() {
     <TooltipProvider>
       <div className="flex flex-col h-screen bg-background text-foreground">
         <header className="flex items-center justify-between p-4 border-b border-border print:hidden shrink-0">
-          <h1 className="text-2xl font-headline font-bold">DocuCraft Grader</h1>
+          <div className="flex items-center gap-4">
+            <Link href="/" passHref>
+                <Button variant="outline" size="icon">
+                    <Home />
+                    <span className="sr-only">Home</span>
+                </Button>
+            </Link>
+            <h1 className="text-xl font-headline font-bold text-gray-800">
+              Untitled Assignment
+            </h1>
+          </div>
           <div className="flex items-center gap-2">
              <Button variant="ghost" size="icon" onClick={() => setIsDataDialogOpen(true)}>
                 <Plus />
