@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput } from "@/ai/types";
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -24,7 +24,15 @@ interface GradedDoc {
     keywords: string;
     analysis: GradeDocumentOutput['analysis'];
     overallFeedback: string;
+    score: number;
 }
+
+const example = {
+    question: "Explain the process of photosynthesis.",
+    rubric: "The explanation should be clear, accurate, and mention the roles of sunlight, water, carbon dioxide, chlorophyll, and the production of glucose and oxygen. Grading is out of 10 points.",
+    answer: "Photosynthesis is how plants eat. They take in sunlight and water through their roots, and CO2 from the air. This happens in the leaves, which are green because of chlorophyll. The plant then makes sugar for food and releases oxygen for us to breathe.",
+    keywords: "sunlight, water, carbon dioxide, chlorophyll, glucose, oxygen"
+};
 
 export default function GraderClient() {
   const [isGrading, setIsGrading] = useState(false);
@@ -35,6 +43,10 @@ export default function GraderClient() {
   const [gradeInput, setGradeInput] = useState<GradeDocumentInput>({ question: '', answer: '', rubric: '', keywords: '' });
 
   const { toast } = useToast()
+
+  const loadExample = () => {
+    setGradeInput(example);
+  };
   
   const handleGrade = async () => {
     if (!gradeInput.question.trim() || !gradeInput.answer.trim() || !gradeInput.rubric.trim()) {
@@ -57,6 +69,7 @@ export default function GraderClient() {
             answer: highlightedAnswer,
             analysis: result.analysis,
             overallFeedback: result.overallFeedback,
+            score: result.score,
         });
         
     } catch (error) {
@@ -88,11 +101,11 @@ export default function GraderClient() {
     <main className="grid grid-cols-12 gap-4 p-4 flex-grow overflow-hidden">
         {/* Comments Column */}
         <div className="col-span-12 md:col-span-3 order-2 md:order-1 h-full overflow-y-auto">
-            <Card>
+            <Card className="h-full flex flex-col">
                 <CardHeader>
-                    <CardTitle>Comments</CardTitle>
+                    <CardTitle>Analysis</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-grow">
                     {isGrading ? (
                         <div className="space-y-4">
                             <Skeleton className="h-16 w-full" />
@@ -102,6 +115,14 @@ export default function GraderClient() {
                     ) : gradedDoc ? (
                         <ScrollArea className="h-[calc(100vh-200px)]">
                           <div className="space-y-4">
+                              <Card>
+                                <CardHeader>
+                                    <CardDescription>Overall Feedback</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <p className="text-sm">{gradedDoc.overallFeedback}</p>
+                                </CardContent>
+                              </Card>
                               {gradedDoc.analysis.map((item) => (
                                   <Card key={item.id} id={`comment-${item.id}`} className={`transition-shadow hover:shadow-lg ${activeCommentId === item.id ? 'border-primary' : ''}`}
                                     onClick={() => {
@@ -124,7 +145,7 @@ export default function GraderClient() {
                         </ScrollArea>
                     ) : (
                         <div className="text-center text-muted-foreground py-10">
-                            Comments will appear here after grading.
+                            Comments & feedback will appear here after grading.
                         </div>
                     )}
                 </CardContent>
@@ -134,6 +155,17 @@ export default function GraderClient() {
         {/* Document Column */}
         <div className="col-span-12 md:col-span-6 order-1 md:order-2 h-full overflow-y-auto">
             <Card className="h-full">
+                 <CardHeader>
+                    {gradedDoc && (
+                         <div className="flex justify-between items-center">
+                            <CardTitle>Graded Document</CardTitle>
+                            <div className="text-2xl font-bold text-primary flex items-center gap-2">
+                                <Sparkles className="w-6 h-6" />
+                                <span>{gradedDoc.score} / 10</span>
+                            </div>
+                         </div>
+                    )}
+                </CardHeader>
                 <CardContent className="p-6 h-full">
                     {isGrading ? (
                         <div className="space-y-4 p-8">
@@ -143,7 +175,7 @@ export default function GraderClient() {
                             <Skeleton className="h-4 w-5/6" />
                         </div>
                     ) : gradedDoc ? (
-                        <ScrollArea className="h-[calc(100vh-140px)]">
+                        <ScrollArea className="h-[calc(100vh-200px)]">
                             <div className="p-4 font-body prose" onClick={handleHighlightClick} dangerouslySetInnerHTML={{ __html: gradedDoc.answer.replace(/\n/g, '<br />') }}></div>
                         </ScrollArea>
                     ) : (
@@ -197,7 +229,7 @@ export default function GraderClient() {
                     </div>
                       <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="rubric" className="text-right">Rubric</Label>
-                        <Textarea id="rubric" value={gradeInput.rubric} onChange={e => setGradeInput({...gradeInput, rubric: e.target.value})} className="col-span-3" placeholder="Enter the grading rubric or criteria..."/>
+                        <Textarea id="rubric" value={gradeInput.rubric} onChange={e => setGradeInput({...gradeInput, rubric: e.target.value})} className="col-span-3" placeholder="Enter the grading rubric, including total points (e.g., 'out of 10 points')..."/>
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="keywords" className="text-right">Keywords</Label>
@@ -208,7 +240,8 @@ export default function GraderClient() {
                         <Textarea id="answer" value={gradeInput.answer} onChange={e => setGradeInput({...gradeInput, answer: e.target.value})} className="col-span-3 min-h-[200px]" placeholder="Paste the answer text here."/>
                     </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="sm:justify-between">
+                    <Button variant="ghost" onClick={loadExample}>Load Example</Button>
                     <Button type="submit" onClick={handleGrade} disabled={isGrading}>
                         {isGrading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                         {isGrading ? "Grading..." : "Grade"}

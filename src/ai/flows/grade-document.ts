@@ -3,7 +3,7 @@
 /**
  * @fileOverview This file contains the Genkit flow for grading a document based on a rubric.
  *
- * - gradeDocument - A function that takes a question, answer, and rubric to generate feedback.
+ * - gradeDocument - A function that takes a question, answer, and rubric to generate feedback and a score.
  */
 
 import {ai} from '@/ai/genkit';
@@ -17,11 +17,13 @@ const prompt = ai.definePrompt({
   name: 'gradeDocumentPrompt',
   input: {schema: GradeDocumentInputSchema},
   output: {schema: GradeDocumentOutputSchema},
-  prompt: `You are an expert teaching assistant. Your task is to grade a student's answer based on a given question and rubric.
+  prompt: `You are an expert teaching assistant. Your task is to grade a student's answer based on a given question and rubric. The rubric includes a total possible score.
 
   First, analyze the provided answer and identify key segments that directly relate to the rubric and question. For each segment you identify, you MUST provide a comment explaining its significance, how it meets (or fails to meet) the rubric, and what makes it stand out. Create a unique ID for each segment.
 
   After analyzing all segments, provide overall feedback on the answer.
+
+  Finally, based on your analysis and the rubric, determine a score for the student's answer. The score should be an integer.
 
   **Question:**
   {{{question}}}
