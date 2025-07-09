@@ -525,7 +525,7 @@ export default function GraderClient() {
             <Tabs defaultValue="questions" className="flex-grow flex flex-col overflow-hidden">
                 <TabsList>
                     <TabsTrigger value="questions">Questions ({questions.length})</TabsTrigger>
-                    <TabsTrigger value="students">Students ({students.length})</TabsTrigger>
+                    <TabsTrigger value="students">Answers ({students.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="questions" className="flex-grow overflow-auto">
                     <ScrollArea className="h-full pr-4">
