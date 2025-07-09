@@ -231,7 +231,7 @@ export default function GraderClient() {
                 processAndSetGradedDoc(result, student, question);
             }
         }
-    } catch (error) {
+    } catch (error) => {
         console.error("Grading error:", error);
         toast({ title: "Grading Error", description: "Could not grade the documents. Please try again.", variant: "destructive" });
     } finally {
@@ -280,7 +280,7 @@ export default function GraderClient() {
 
         processAndSetGradedDoc(result.updatedAnalysis, student, currentQuestion);
 
-    } catch (error) {
+    } catch (error) => {
         console.error("Chat error:", error);
         toast({ title: "Chat Error", description: "Could not get response from AI. Please try again.", variant: "destructive" });
         setChatHistory(prev => prev.slice(0, -1));
@@ -570,10 +570,14 @@ export default function GraderClient() {
                             {students.map((s, studentIndex) => (
                                 <AccordionItem value={s.id} key={s.id}>
                                     <AccordionTrigger>
-                                        <Input value={s.name} onChange={e => handleUpdateStudent(studentIndex, 'name', e.target.value)} className="w-auto" onClick={e => e.stopPropagation()} />
+                                       {s.name}
                                     </AccordionTrigger>
                                     <AccordionContent>
                                         <div className="space-y-4 p-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor={`s-name-${s.id}`}>Student Name</Label>
+                                                <Input id={`s-name-${s.id}`} value={s.name} onChange={e => handleUpdateStudent(studentIndex, 'name', e.target.value)} />
+                                            </div>
                                             {questions.map((q, questionIndex) => (
                                                 <div key={q.id} className="space-y-2">
                                                     <Label htmlFor={`s-answer-${s.id}-${q.id}`}>Answer for: "{q.text.substring(0,50)}..."</Label>
