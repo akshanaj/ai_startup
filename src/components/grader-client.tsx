@@ -309,7 +309,7 @@ export default function GraderClient() {
         detectedCount = studentBlocks.length;
         parsedStudents = studentBlocks.map((block, index) => {
             const lines = block.trim().split('\n');
-            const name = lines[0].trim().replace('•', '').trim() || `Student ${index + 1}`;
+            const name = lines[0].trim().replace(/•/g, '').trim() || `Student ${index + 1}`;
             const answers = lines.slice(1).map(line => line.replace(/•/g, '').trim()).filter(Boolean);
             return { id: `s${Date.now()}${index}`, name, answers };
         });
@@ -624,24 +624,24 @@ export default function GraderClient() {
                             <Card className="mt-2">
                                 <CardHeader className="p-4">
                                     <CardTitle className="text-base flex items-center gap-2">Formatting Guide 
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger><Info className="w-4 h-4 text-muted-foreground"/></TooltipTrigger>
-                                            <TooltipContent>
-                                                <div className="p-2 text-sm">
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <Info className="w-4 h-4 text-muted-foreground cursor-pointer"/>
+                                            </PopoverTrigger>
+                                            <PopoverContent>
+                                                <div className="p-2 text-sm space-y-2">
                                                     <p className="font-bold">Each student's entry starts with "Student Name", followed by their answers as bullet points on new lines. The parser is case-insensitive to "Student Name".</p>
-                                                    <code className="block whitespace-pre-wrap p-2 rounded bg-muted mt-2">
+                                                    <code className="block whitespace-pre-wrap p-2 rounded bg-muted mt-2 text-xs">
                                                         Student Name Alice<br/>
-                                                        • Answer 1...<br/>
-                                                        • Answer 2...<br/>
+                                                        • Answer to Question 1...<br/>
+                                                        • Answer to Question 2...<br/>
                                                         <br/>
                                                         Student Name Bob<br/>
-                                                        • Answer 1...<br/>
+                                                        • Answer to Question 1...<br/>
                                                     </code>
                                                 </div>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                            </PopoverContent>
+                                        </Popover>
                                     </CardTitle>
                                 </CardHeader>
                             </Card>
@@ -656,14 +656,14 @@ export default function GraderClient() {
                             <Card className="mt-2">
                                 <CardHeader>
                                     <CardTitle className="text-base flex items-center gap-2">Formatting Guide
-                                      <TooltipProvider>
-                                          <Tooltip>
-                                              <TooltipTrigger><Info className="w-4 h-4 text-muted-foreground"/></TooltipTrigger>
-                                              <TooltipContent>
-                                                  <p className="max-w-xs p-2">Upload one .txt file per student. The student's name will be the filename. Each line in the file is treated as an answer to a question, in order.</p>
-                                              </TooltipContent>
-                                          </Tooltip>
-                                      </TooltipProvider>
+                                      <Popover>
+                                          <PopoverTrigger asChild>
+                                            <Info className="w-4 h-4 text-muted-foreground cursor-pointer"/>
+                                          </PopoverTrigger>
+                                          <PopoverContent>
+                                              <p className="max-w-xs p-2 text-sm">Upload one .txt file per student. The student's name will be the filename. Each line in the file is treated as an answer to a question, in order.</p>
+                                          </PopoverContent>
+                                      </Popover>
                                     </CardTitle>
                                 </CardHeader>
                                 <CardContent>
@@ -740,3 +740,5 @@ export default function GraderClient() {
     </TooltipProvider>
   )
 }
+
+    
