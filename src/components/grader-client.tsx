@@ -218,61 +218,47 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const parseFileContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      // Prioritize .txt extension and use readAsText
-      if (file.name.endsWith('.txt')) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          if (event.target?.result) {
-            resolve(event.target.result as string);
-          } else {
-            reject(new Error("File content is empty."));
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          if (!event.target?.result) {
+            return reject(new Error("File content is empty."));
           }
-        };
-        reader.onerror = (error) => reject(error);
-        reader.readAsText(file);
-      } else { // Handle PDF, DOCX, and other files as before
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          try {
-            if (!event.target?.result) {
-              return reject(new Error("File content is empty."));
-            }
-            const arrayBuffer = event.target.result as ArrayBuffer;
+          const arrayBuffer = event.target.result as ArrayBuffer;
 
-            if (file.type === 'application/pdf') {
-              const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
-              let text = '';
-              for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const content = await page.getTextContent();
-                let lastY = -1;
-                let pageText = content.items.map((item: any) => {
-                  if ('str' in item) {
-                    let line = '';
-                    if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
-                      line += '\n';
-                    }
-                    lastY = item.transform[5];
-                    return line + item.str;
+          if (file.type === 'application/pdf') {
+            const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
+            let text = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              let lastY = -1;
+              let pageText = content.items.map((item: any) => {
+                if ('str' in item) {
+                  let line = '';
+                  if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
+                    line += '\n';
                   }
-                  return '';
-                }).join('');
-                text += pageText + '\n\n'; // Add space between pages
-              }
-              resolve(text);
-            } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-              const result = await mammoth.extractRawText({ arrayBuffer });
-              resolve(result.value);
-            } else { // Fallback for other text-based files
-              resolve(new TextDecoder().decode(arrayBuffer));
+                  lastY = item.transform[5];
+                  return line + item.str;
+                }
+                return '';
+              }).join('');
+              text += pageText + '\n\n'; // Add space between pages
             }
-          } catch (error) {
-            reject(error);
+            resolve(text);
+          } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            resolve(result.value);
+          } else { // Fallback for other text-based files
+            resolve(new TextDecoder().decode(arrayBuffer));
           }
-        };
-        reader.onerror = (error) => reject(error);
-        reader.readAsArrayBuffer(file);
-      }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsArrayBuffer(file);
     });
   };
 
@@ -930,14 +916,14 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     <div className="space-y-2">
                                         <Label htmlFor="file-upload-input" className="text-base font-semibold">Upload Student Answers</Label>
                                         <p className="text-sm text-muted-foreground">
-                                            Upload one .txt, .docx, or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
+                                            Upload one .docx, or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
                                         </p>
                                         <div className="relative">
                                             <Input 
                                                 id="file-upload-input" 
                                                 type="file" 
                                                 multiple 
-                                                accept=".txt,.docx,.pdf" 
+                                                accept=".docx,.pdf" 
                                                 onChange={handleFileChange} 
                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                             />
