@@ -225,7 +225,21 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
                         const content = await page.getTextContent();
-                        text += content.items.map((item: any) => ('str' in item ? item.str : '')).join(' ') + '\n';
+                        // This logic tries to reconstruct line breaks and spacing.
+                        // It's not perfect but better than just joining with spaces.
+                        let lastY = -1;
+                        let pageText = content.items.map((item: any) => {
+                           if ('str' in item) {
+                                let line = '';
+                                if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
+                                    line += '\n';
+                                }
+                                lastY = item.transform[5];
+                                return line + item.str;
+                           }
+                           return '';
+                        }).join('');
+                        text += pageText + '\n\n'; // Add space between pages
                     }
                     resolve(text);
                 } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
@@ -249,17 +263,21 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
     for (const file of files) {
         try {
-            const text = await parseFileContent(file);
+            const rawText = await parseFileContent(file);
             const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
             
-            const answers = text
-                .split('\n')
+            // Forcefully re-split content to handle poor formatting from text extraction
+            const lines = rawText
+                .split(/[\n\r]+|(?=[•\-–*]\s)/) // Split on newlines OR before a bullet point
                 .map(line => line.trim())
+                .filter(line => line.length > 0);
+            
+            const answers = lines
                 .map(line => {
                     const match = line.match(answerRegex);
                     return match ? match[1].trim() : null;
                 })
-                .filter((answer): answer is string => answer !== null);
+                .filter((answer): answer is string => answer !== null && answer.length > 0);
             
             if (answers.length > 0) {
                  newStudents.push({
@@ -268,7 +286,12 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     answers: answers,
                 });
             } else {
-                 console.warn(`No bulleted answers found in file: ${file.name}`);
+                 console.warn(`No valid bulleted answers found in file: ${file.name}`);
+                 toast({
+                    title: `Warning: No answers found for ${name}`,
+                    description: `The file ${file.name} did not contain any recognizable bullet points.`,
+                    variant: "destructive"
+                });
             }
 
         } catch (error) {
