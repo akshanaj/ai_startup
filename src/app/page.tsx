@@ -72,7 +72,7 @@ export default function Home() {
           <p className="text-lg text-muted-foreground mb-8 font-body">
             Your AI-powered grading assistant.
           </p>
-          <Button size="lg" onClick={createNewAssignment}>
+          <Button size="lg" onClick={createNewAssignment} className="font-semibold shadow-sm">
             <PlusCircle className="mr-2" />
             New Assignment
           </Button>
@@ -86,13 +86,13 @@ export default function Home() {
             <CardContent>
               <div className="space-y-4">
                 {assignments.map((assignment) => (
-                  <div key={assignment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div key={assignment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors shadow-md">
                     <Link href={`/assignment/${assignment.id}`} className="flex-grow">
                       <div className="flex items-center gap-4">
                         <BookOpen className="w-6 h-6 text-primary" />
                         <div>
                           <p className="font-semibold">{assignment.name}</p>
-                          <p className="text-sm text-muted-foreground">ID: {assignment.id}</p>
+                          <p className="text-sm text-gray-500">ID: {assignment.id}</p>
                         </div>
                       </div>
                     </Link>
