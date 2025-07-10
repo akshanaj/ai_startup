@@ -135,8 +135,12 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const [expectedStudents, setExpectedStudents] = useState(0);
   const [expectedQuestionsPerStudent, setExpectedQuestionsPerStudent] = useState(0);
 
-
   const { toast } = useToast()
+
+  const [isHydrated, setIsHydrated] = useState(false);
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   const currentQuestion = questions[activeQuestionIndex];
   const currentGradingResult = useMemo(() => {
@@ -161,11 +165,6 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
         setActiveStudentId(students[0]?.id ?? null);
     }
   }, [students, activeStudentId, isHydrated]);
-
-  const [isHydrated, setIsHydrated] = useState(false);
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
 
   useEffect(() => {
     if (chatScrollAreaRef.current) {
