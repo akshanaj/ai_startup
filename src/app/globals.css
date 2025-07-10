@@ -57,6 +57,19 @@
     @apply bg-background text-foreground;
   }
 
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: url('/images/paper-texture.svg');
+    opacity: 0.1;
+    z-index: -1;
+    pointer-events: none;
+  }
+
   .output-document h1 { @apply text-4xl font-bold mb-6 font-headline; }
   .output-document h2 { @apply text-3xl font-bold mb-4 font-headline; }
   .output-document h3 { @apply text-2xl font-bold mb-4 font-headline; }
