@@ -76,17 +76,21 @@ function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch
     const [isHydrated, setIsHydrated] = useState(false);
 
     useEffect(() => {
-        try {
-            const storedValue = window.localStorage.getItem(key);
-            if (storedValue) {
-                setState(JSON.parse(storedValue));
+        setIsHydrated(true);
+    }, []);
+
+    useEffect(() => {
+        if (isHydrated) {
+            try {
+                const storedValue = window.localStorage.getItem(key);
+                if (storedValue) {
+                    setState(JSON.parse(storedValue));
+                }
+            } catch (error) {
+                console.error("Error reading from localStorage", error);
             }
-        } catch (error) {
-            console.error("Error reading from localStorage", error);
-        } finally {
-            setIsHydrated(true);
         }
-    }, [key]);
+    }, [key, isHydrated]);
 
     useEffect(() => {
         if (isHydrated) {
@@ -141,19 +145,27 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   }, [gradingResults, currentQuestion, activeStudentId]);
   
   useEffect(() => {
+    if(!isHydrated) return;
     setEditableTitle(assignmentName)
-  }, [assignmentName]);
+  }, [assignmentName, isHydrated]);
   
   useEffect(() => {
+    if(!isHydrated) return;
     setExpectedQuestionsPerStudent(questions.length);
-  }, [questions]);
+  }, [questions, isHydrated]);
 
 
   useEffect(() => {
+    if(!isHydrated) return;
     if (students.length > 0 && (!activeStudentId || !students.find(s => s.id === activeStudentId))) {
         setActiveStudentId(students[0]?.id ?? null);
     }
-  }, [students, activeStudentId]);
+  }, [students, activeStudentId, isHydrated]);
+
+  const [isHydrated, setIsHydrated] = useState(false);
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (chatScrollAreaRef.current) {
@@ -214,51 +226,53 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const parseFileContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                if (!event.target?.result) {
-                    return reject(new Error("File content is empty."));
-                }
-                const arrayBuffer = event.target.result as ArrayBuffer;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          if (!event.target?.result) {
+            return reject(new Error("File content is empty."));
+          }
+          const arrayBuffer = event.target.result as ArrayBuffer;
 
-                if (file.type === 'application/pdf') {
-                    const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
-                    let text = '';
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const content = await page.getTextContent();
-                        // This logic tries to reconstruct line breaks and spacing.
-                        // It's not perfect but better than just joining with spaces.
-                        let lastY = -1;
-                        let pageText = content.items.map((item: any) => {
-                           if ('str' in item) {
-                                let line = '';
-                                if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
-                                    line += '\n';
-                                }
-                                lastY = item.transform[5];
-                                return line + item.str;
-                           }
-                           return '';
-                        }).join('');
-                        text += pageText + '\n\n'; // Add space between pages
-                    }
-                    resolve(text);
-                } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-                    const result = await mammoth.extractRawText({ arrayBuffer });
-                    resolve(result.value);
-                } else { // Plain text, rtf, etc.
-                    resolve(new TextDecoder().decode(arrayBuffer));
+          if (file.type === 'application/pdf') {
+            const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
+            let text = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              let lastY = -1;
+              let pageText = content.items.map((item: any) => {
+                if ('str' in item) {
+                  let line = '';
+                  if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
+                    line += '\n';
+                  }
+                  lastY = item.transform[5];
+                  return line + item.str;
                 }
-            } catch (error) {
-                reject(error);
+                return '';
+              }).join('');
+              text += pageText + '\n\n'; // Add space between pages
             }
-        };
-        reader.onerror = (error) => reject(error);
-        reader.readAsArrayBuffer(file);
+            resolve(text);
+          } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            resolve(result.value);
+          } else if (file.type === 'application/rtf' || file.name.endsWith('.rtf')) {
+            // Fallback for RTF: treat as plain text, as client-side parsing is unreliable.
+            // This might include RTF code, but it prevents crashing.
+            resolve(new TextDecoder().decode(arrayBuffer));
+          } else { // Plain text
+            resolve(new TextDecoder().decode(arrayBuffer));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsArrayBuffer(file);
     });
-};
+  };
 
   const processFilesAndCreateStudents = async (files: File[]): Promise<Student[]> => {
     const newStudents: Student[] = [];
@@ -283,11 +297,20 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                 .filter((answer): answer is string => answer !== null && answer.length > 0);
             
             if (answers.length > 0) {
-                 newStudents.push({
+                 const student: Student = {
                     id: `s-${Date.now()}-${name}`,
                     name: name,
                     answers: answers,
-                });
+                };
+                newStudents.push(student);
+
+                if (expectedQuestionsPerStudent > 0 && answers.length !== expectedQuestionsPerStudent) {
+                    toast({
+                        title: `Answer Mismatch for ${name}`,
+                        description: `Found ${answers.length} answers, but expected ${expectedQuestionsPerStudent}.`,
+                        variant: "destructive"
+                    });
+                }
             } else {
                  console.warn(`No valid bulleted answers found in file: ${file.name}`);
                  toast({
@@ -591,7 +614,20 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const isDataLoaded = questions.length > 0 && students.length > 0;
   const areResultsLoaded = Object.keys(gradingResults).length > 0;
   
-  const renderGrader = () => (
+  const renderGrader = () => {
+    if (!isHydrated) {
+        return (
+             <main className="grid grid-cols-12 gap-4 p-4 flex-grow overflow-hidden">
+                <div className="col-span-12 md:col-span-3 order-2 md:order-1 h-full"><Skeleton className="h-full w-full"/></div>
+                <div className="col-span-12 md:col-span-6 order-1 md:order-2 h-full flex flex-col gap-4">
+                    <Skeleton className="h-20 w-full"/>
+                    <Skeleton className="h-full w-full flex-grow"/>
+                </div>
+                <div className="col-span-12 md:col-span-3 order-3 h-full"><Skeleton className="h-full w-full"/></div>
+            </main>
+        )
+    }
+    return (
     <main className="grid grid-cols-12 gap-4 p-4 flex-grow overflow-hidden">
         {/* Comments Column */}
         <div className="col-span-12 md:col-span-3 order-2 md:order-1 h-full overflow-y-auto">
@@ -798,7 +834,8 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             </Card>
         </div>
     </main>
-  );
+    )
+  };
 
   const renderDataDialog = () => (
     <Dialog open={isDataDialogOpen} onOpenChange={(open) => { setIsDataDialogOpen(open); if (!open) setValidationWarning(null); }}>
