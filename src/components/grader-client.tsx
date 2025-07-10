@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home, Pencil, AlertTriangle } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home, Pencil, AlertTriangle, Wand2 } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -357,37 +357,51 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
   };
   
+  const parsePastedText = () => {
+    const lines = pastedText.split('\n').map(line => line.trim()).filter(Boolean);
+    let parsedStudents: Omit<Student, 'id'>[] = [];
+    let currentStudent: Omit<Student, 'id'> | null = null;
+    const nameRegex = /^[^\s•\-–*].+/;
+    const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+
+    lines.forEach(line => {
+      const bulletMatch = line.match(bulletRegex);
+      if (nameRegex.test(line) && !bulletMatch) {
+        if (currentStudent) {
+          parsedStudents.push(currentStudent);
+        }
+        currentStudent = {
+          name: line,
+          answers: []
+        };
+      } else if (bulletMatch && currentStudent) {
+        currentStudent.answers.push(bulletMatch[1].trim());
+      }
+    });
+
+    if (currentStudent) {
+      parsedStudents.push(currentStudent);
+    }
+    return parsedStudents;
+  };
+  
+  const handleFormatText = () => {
+    const parsed = parsePastedText();
+    const formattedText = parsed
+      .map(student => `${student.name}\n${student.answers.map(a => `• ${a}`).join('\n')}`)
+      .join('\n\n');
+    setPastedText(formattedText);
+    toast({ title: "Text Formatted", description: "The pasted text has been cleaned up." });
+  };
+
   const parseAndSetStudents = async () => {
     let parsedStudents: Student[] = [];
     let validationDetails: string[] = [];
     const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
 
     if (activeTab === 'paste-text') {
-        const lines = pastedText.split('\n').map(line => line.trim()).filter(Boolean);
-        let currentStudent: Student | null = null;
-        const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
-        const nameRegex = /^[^\s•\-–*].+/;
-
-        lines.forEach(line => {
-            if (nameRegex.test(line)) { // It's a student name
-                if (currentStudent) {
-                    parsedStudents.push(currentStudent);
-                }
-                currentStudent = {
-                    id: `s${Date.now()}${parsedStudents.length}`,
-                    name: line,
-                    answers: []
-                };
-            } else { // It might be an answer
-                const bulletMatch = line.match(bulletRegex);
-                if (bulletMatch && currentStudent) {
-                    currentStudent.answers.push(bulletMatch[1].trim());
-                }
-            }
-        });
-        if (currentStudent) { // Add the last student
-            parsedStudents.push(currentStudent);
-        }
+        const parsed = parsePastedText();
+        parsedStudents = parsed.map((s, i) => ({ ...s, id: `s${Date.now()}${i}` }));
     } else { // File Upload
         const filePromises = (uploadedFiles as any[]).map(async (fileJson, index) => {
             const file = JSON.parse(fileJson);
@@ -396,24 +410,26 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             const answers = lines.map((line: string) => {
                 const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
                 const match = line.match(bulletRegex);
-                return match ? match[1] : line; // Store full line if not bulleted
-            });
+                return match ? match[1].trim() : line; // Store full line if not bulleted
+            }).filter(Boolean);
             const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`; // filename without extension
             return { id: `s${Date.now()}${index}`, name, answers };
         });
         parsedStudents = await Promise.all(filePromises);
     }
-
+    
     // Validation
     const studentsWithAtLeastOneAnswer = parsedStudents.filter(s => s.answers.length > 0);
-    const providedStudentCount = studentsWithAtLeastOneAnswer.length;
+    const providedStudentCount = activeTab === 'paste-text' 
+        ? studentsWithAtLeastOneAnswer.length
+        : uploadedFiles.length;
 
     if (providedStudentCount < studentCount) {
         setValidationWarning({
             type: 'count',
             message: `Only ${providedStudentCount} out of ${studentCount} student answers provided.`,
         });
-        setStudents(parsedStudents); // Set what we have
+        // Do not set students here to force user to fix or continue
         return;
     }
 
@@ -429,7 +445,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             message: "Some students have an incorrect number of answers.",
             details: validationDetails,
         });
-        setStudents(parsedStudents); // Set what we have
+         // Do not set students here to force user to fix or continue
         return;
     }
 
@@ -440,9 +456,36 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   };
 
   const handleContinueAnyway = () => {
+    const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
+    let parsedStudents: Student[] = [];
+
+    if (activeTab === 'paste-text') {
+        const parsed = parsePastedText();
+        parsedStudents = parsed.map((s, i) => ({ ...s, id: `s${Date.now()}${i}` }));
+    } else {
+        const filePromises = (uploadedFiles as any[]).map(async (fileJson, index) => {
+            const file = JSON.parse(fileJson);
+            const text = file.text;
+            const lines = text.split('\n').map((line: string) => line.trim()).filter(Boolean);
+            const answers = lines.map((line: string) => {
+                const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+                const match = line.match(bulletRegex);
+                return match ? match[1].trim() : line;
+            }).filter(Boolean);
+            const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`;
+            return { id: `s${Date.now()}${index}`, name, answers };
+        });
+        Promise.all(filePromises).then(res => {
+            setStudents(res);
+        });
+    }
+    if (parsedStudents.length > 0) {
+      setStudents(parsedStudents);
+    }
+
     setIsDataDialogOpen(false);
     setValidationWarning(null);
-    toast({title: "Student Data Updated", description: `${students.length} students loaded.`});
+    toast({title: "Student Data Updated", description: `Loaded data for available students.`});
   }
   
   const handleTitleSave = () => {
@@ -734,7 +777,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                         </TabsList>
                         <TabsContent value="paste-text" className="flex-grow flex flex-col">
                             <Card className="mt-2">
-                                <CardHeader className="p-4">
+                                <CardHeader className="p-4 flex flex-row items-center justify-between">
                                     <CardTitle className="text-base flex items-center gap-2">Formatting Guide 
                                         <Popover>
                                             <PopoverTrigger asChild>
@@ -748,6 +791,10 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                             </PopoverContent>
                                         </Popover>
                                     </CardTitle>
+                                    <Button variant="outline" size="sm" onClick={handleFormatText}>
+                                        <Wand2 className="mr-2 h-4 w-4" />
+                                        Format Text
+                                    </Button>
                                 </CardHeader>
                             </Card>
                             <Textarea 
@@ -814,7 +861,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                            </ul>
                         )}
                         <div className="flex gap-2 mt-2">
-                           <Button variant="outline" size="sm" onClick={() => setValidationWarning(null)}>Go Back and Fix</Button>
+                           <Button variant="outline" size="sm" onClick={() => { setValidationWarning(null); }}>Go Back and Fix</Button>
                            <Button size="sm" onClick={handleContinueAnyway}>Continue Anyway</Button>
                         </div>
                     </AlertDescription>
