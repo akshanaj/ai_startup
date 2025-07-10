@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Trash2, BookOpen } from 'lucide-react';
+import { PlusCircle, Trash2, BookOpen, Apple } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import Link from 'next/link';
@@ -13,26 +13,6 @@ interface Assignment {
   id: string;
   name: string;
 }
-
-const AppleIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z" />
-    <path d="M10 2c1 .5 2 2 2 5" />
-    <path d="M17 5.23a2.74 2.74 0 0 1 .5-2.23 2.74 2.74 0 0 0-2.5 2.23" />
-  </svg>
-);
-
 
 export default function Home() {
   const router = useRouter();
@@ -86,8 +66,8 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center bg-background p-8 sm:p-12 md:p-24">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-12 p-8 rounded-xl bg-gradient-to-b from-muted/30 to-background">
-           <div className="flex items-center justify-center gap-4 mb-4">
-              <AppleIcon className="w-12 h-12 text-primary" />
+           <div className="flex items-center justify-center gap-3 mb-4">
+              <Apple className="w-8 h-8 text-destructive transition-transform duration-300 hover:animate-pulse" />
               <h1 className="text-5xl font-bold font-headline">
                  Welcome to <span className="px-2 py-1 rounded-md bg-green-200/50">Teacher&apos;s</span> <span className="px-2 py-1 rounded-md bg-red-200/50">Pet</span>
               </h1>
