@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
+import { formatAnswers } from "@/ai/flows/format-answers"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle, Info, FileText, Upload, ClipboardPaste } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
@@ -24,6 +25,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { ReloadIcon } from "@radix-ui/react-icons"
 import Link from "next/link"
 import mammoth from "mammoth";
 import * as pdfjs from 'pdfjs-dist';
@@ -107,6 +109,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const [isScorePopoverOpen, setIsScorePopoverOpen] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [isFormatting, setIsFormatting] = useState(false);
   
   const [assignmentName, setAssignmentName] = usePersistentState(`${assignmentId}-name`, "Untitled Assignment");
   const [questions, setQuestions] = usePersistentState<Question[]>(`${assignmentId}-questions`, []);
@@ -349,24 +352,33 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
       return students;
   };
 
-  const handleFormatPastedText = () => {
-    const parsedStudents = parsePastedText(pastedAnswers);
-    if (parsedStudents.length === 0) {
+  const handleFormatPastedText = async () => {
+    if (!pastedAnswers.trim()) {
         toast({
             title: "Nothing to Format",
-            description: "Could not find any student data in the format provided.",
+            description: "Please paste some text first.",
             variant: "destructive"
         });
         return;
     }
-    const formattedText = parsedStudents.map(student => 
-        `${student.name}\n${student.answers.map(a => `• ${a}`).join('\n')}`
-    ).join('\n\n');
-    setPastedAnswers(formattedText);
-    toast({
-        title: "Text Formatted",
-        description: "Your pasted text has been cleaned up."
-    });
+    setIsFormatting(true);
+    try {
+        const formattedText = await formatAnswers(pastedAnswers);
+        setPastedAnswers(formattedText);
+        toast({
+            title: "Text Formatted by AI",
+            description: "Your pasted text has been cleaned up."
+        });
+    } catch (error) {
+        console.error("AI Formatting Error:", error);
+        toast({
+            title: "Formatting Error",
+            description: "Could not format text using AI. Please try again.",
+            variant: "destructive"
+        });
+    } finally {
+        setIsFormatting(false);
+    }
   };
   
   const handleUpdateStudentAnswers = async () => {
@@ -925,8 +937,11 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                         />
                                     </div>
                                      <div className="flex gap-2 mt-auto">
-                                        <Button onClick={handleFormatPastedText} variant="outline" className="flex-1">Format Text</Button>
-                                        <Button onClick={handleUpdateStudentAnswers} className="flex-1">
+                                        <Button onClick={handleFormatPastedText} variant="outline" className="flex-1" disabled={isFormatting}>
+                                            {isFormatting ? <ReloadIcon className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2" />}
+                                            {isFormatting ? "Formatting..." : "Format with AI"}
+                                        </Button>
+                                        <Button onClick={handleUpdateStudentAnswers} className="flex-1" disabled={isFormatting}>
                                             <ClipboardPaste className="mr-2" /> Load Pasted Answers
                                         </Button>
                                     </div>
