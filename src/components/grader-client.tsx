@@ -349,41 +349,40 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
         });
         const allFiles = await Promise.all(filePromises);
         
-        // This is a simplified way to store file content for parsing.
-        // A more robust solution would handle this differently, but for localStorage this is okay.
         const stringifiedFiles = allFiles.map(f => JSON.stringify(f));
         setUploadedFiles(stringifiedFiles as any);
         setValidationWarning(null);
     }
   };
   
-  const parsePastedText = () => {
-    const lines = pastedText.split('\n').map(line => line.trim()).filter(Boolean);
-    let parsedStudents: Omit<Student, 'id'>[] = [];
-    let currentStudent: Omit<Student, 'id'> | null = null;
-    const nameRegex = /^[^\s•\-–*].+/;
-    const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+    const parsePastedText = () => {
+        const lines = pastedText.split('\n').map(line => line.trim()).filter(Boolean);
+        const parsedStudents: Omit<Student, 'id'>[] = [];
+        let currentStudent: Omit<Student, 'id'> | null = null;
+        
+        const nameRegex = /^[^\s•\-–*].+/;
+        const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
 
-    lines.forEach(line => {
-      const bulletMatch = line.match(bulletRegex);
-      if (nameRegex.test(line) && !bulletMatch) {
+        lines.forEach(line => {
+            const isName = nameRegex.test(line);
+            const bulletMatch = line.match(bulletRegex);
+
+            if (isName && !bulletMatch) {
+                if (currentStudent) {
+                    parsedStudents.push(currentStudent);
+                }
+                currentStudent = { name: line, answers: [] };
+            } else if (bulletMatch && currentStudent) {
+                currentStudent.answers.push(bulletMatch[1].trim());
+            }
+        });
+
         if (currentStudent) {
-          parsedStudents.push(currentStudent);
+            parsedStudents.push(currentStudent);
         }
-        currentStudent = {
-          name: line,
-          answers: []
-        };
-      } else if (bulletMatch && currentStudent) {
-        currentStudent.answers.push(bulletMatch[1].trim());
-      }
-    });
-
-    if (currentStudent) {
-      parsedStudents.push(currentStudent);
-    }
-    return parsedStudents;
-  };
+        
+        return parsedStudents;
+    };
   
   const handleFormatText = () => {
     const parsed = parsePastedText();
@@ -395,13 +394,13 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   };
 
   const parseAndSetStudents = async () => {
-    let parsedStudents: Student[] = [];
+    let finalStudents: Student[] = [];
     let validationDetails: string[] = [];
     const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
 
     if (activeTab === 'paste-text') {
         const parsed = parsePastedText();
-        parsedStudents = parsed.map((s, i) => ({ ...s, id: `s${Date.now()}${i}` }));
+        finalStudents = parsed.map((s, i) => ({ ...s, id: `s${Date.now()}${i}` }));
     } else { // File Upload
         const filePromises = (uploadedFiles as any[]).map(async (fileJson, index) => {
             const file = JSON.parse(fileJson);
@@ -410,30 +409,27 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             const answers = lines.map((line: string) => {
                 const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
                 const match = line.match(bulletRegex);
-                return match ? match[1].trim() : line; // Store full line if not bulleted
+                return match ? match[1].trim() : line;
             }).filter(Boolean);
-            const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`; // filename without extension
+            const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`;
             return { id: `s${Date.now()}${index}`, name, answers };
         });
-        parsedStudents = await Promise.all(filePromises);
+        finalStudents = await Promise.all(filePromises);
     }
     
     // Validation
-    const studentsWithAtLeastOneAnswer = parsedStudents.filter(s => s.answers.length > 0);
-    const providedStudentCount = activeTab === 'paste-text' 
-        ? studentsWithAtLeastOneAnswer.length
-        : uploadedFiles.length;
+    const studentsWithAtLeastOneAnswer = finalStudents.filter(s => s.answers.length > 0);
+    const providedStudentCount = studentsWithAtLeastOneAnswer.length;
 
     if (providedStudentCount < studentCount) {
         setValidationWarning({
             type: 'count',
             message: `Only ${providedStudentCount} out of ${studentCount} student answers provided.`,
         });
-        // Do not set students here to force user to fix or continue
         return;
     }
 
-    parsedStudents.forEach(student => {
+    finalStudents.forEach(student => {
         if (student.answers.length !== questions.length) {
             validationDetails.push(`⚠️ ${student.name} has ${student.answers.length}/${questions.length} answers.`);
         }
@@ -445,11 +441,10 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             message: "Some students have an incorrect number of answers.",
             details: validationDetails,
         });
-         // Do not set students here to force user to fix or continue
         return;
     }
 
-    setStudents(parsedStudents);
+    setStudents(finalStudents);
     setIsDataDialogOpen(false);
     setValidationWarning(null);
     toast({title: "Student Data Updated", description: `✅ ${providedStudentCount} out of ${studentCount} student answers provided.`});
