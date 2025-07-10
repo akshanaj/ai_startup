@@ -141,7 +141,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   useEffect(() => {
     setIsHydrated(true);
   }, []);
-
+  
   const currentQuestion = questions[activeQuestionIndex];
   const currentGradingResult = useMemo(() => {
     if (!currentQuestion || !activeStudentId) return null;
@@ -257,7 +257,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
           } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             const result = await mammoth.extractRawText({ arrayBuffer });
             resolve(result.value);
-          } else if (file.type === 'application/rtf' || file.name.endsWith('.rtf')) {
+          } else if (file.type === 'application/rtf' || file.name.endsWith('.rtf') || file.type === 'text/rtf') {
             // Fallback for RTF: treat as plain text, as client-side parsing is unreliable.
             // This might include RTF code, but it prevents crashing.
             resolve(new TextDecoder().decode(arrayBuffer));
@@ -919,7 +919,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                                 id="file-upload-input" 
                                                 type="file" 
                                                 multiple 
-                                                accept=".txt,.docx,.rtf,.pdf" 
+                                                accept=".txt,.docx,.rtf,.pdf,application/rtf,text/rtf" 
                                                 onChange={handleFileChange} 
                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                             />
