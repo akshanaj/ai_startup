@@ -187,9 +187,14 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-        setUploadedFiles(Array.from(event.target.files));
+        setUploadedFiles(prev => [...prev, ...Array.from(event.target.files)]);
     }
   };
+
+  const handleRemoveFile = (fileName: string) => {
+    setUploadedFiles(prev => prev.filter(file => file.name !== fileName));
+  };
+
 
   const parseFileContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -800,9 +805,15 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                         <ScrollArea className="h-48 bg-background p-2 rounded-md border">
                                             <ul className="space-y-1">
                                                 {uploadedFiles.map(file => (
-                                                    <li key={file.name} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-md">
-                                                        <FileText className="h-4 w-4" />
-                                                        <span className="truncate">{file.name}</span>
+                                                    <li key={file.name} className="flex items-center justify-between gap-2 text-sm p-2 bg-muted rounded-md">
+                                                        <div className="flex items-center gap-2 truncate">
+                                                          <FileText className="h-4 w-4 shrink-0" />
+                                                          <span className="truncate">{file.name}</span>
+                                                        </div>
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleRemoveFile(file.name)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                            <span className="sr-only">Remove file</span>
+                                                        </Button>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -914,5 +925,3 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
-
-    
