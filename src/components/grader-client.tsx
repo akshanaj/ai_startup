@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home, Pencil } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, FileUp, Info, Home, Pencil, AlertTriangle } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -46,6 +46,13 @@ interface GradingResult {
     score: number;
     highlightedAnswer: string;
 }
+
+interface ValidationWarning {
+    type: 'count' | 'mismatch';
+    message: string;
+    details?: string[];
+}
+
 
 const example = {
     questions: [
@@ -113,10 +120,11 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
 
   // State for the new data dialog
-  const [studentCount, setStudentCount] = useState(2);
-  const [pastedText, setPastedText] = useState("");
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [validationWarning, setValidationWarning] = useState<string | null>(null);
+  const [studentCount, setStudentCount] = usePersistentState(`${assignmentId}-studentCount`, 2);
+  const [pastedText, setPastedText] = usePersistentState(`${assignmentId}-pastedText`, "");
+  const [uploadedFiles, setUploadedFiles] = usePersistentState<File[]>(`${assignmentId}-uploadedFiles`, []);
+  
+  const [validationWarning, setValidationWarning] = useState<ValidationWarning | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editableTitle, setEditableTitle] = useState(assignmentName);
 
@@ -329,84 +337,100 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-        setUploadedFiles(Array.from(event.target.files));
+        const fileList = Array.from(event.target.files);
+        const filePromises = fileList.map(file => {
+            return new Promise<{name: string, text: string}>(resolve => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve({ name: file.name, text: e.target?.result as string });
+                reader.readAsText(file);
+            });
+        });
+        const allFiles = await Promise.all(filePromises);
+        
+        // This is a simplified way to store file content for parsing.
+        // A more robust solution would handle this differently, but for localStorage this is okay.
+        const stringifiedFiles = allFiles.map(f => JSON.stringify(f));
+        setUploadedFiles(stringifiedFiles as any);
         setValidationWarning(null);
     }
   };
   
   const parseAndSetStudents = async () => {
     let parsedStudents: Student[] = [];
-    let detectedCount = 0;
-
+    let validationDetails: string[] = [];
     const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
 
     if (activeTab === 'paste-text') {
-        // More flexible regex to find "Student <Name/ID>" followed by a colon or space
-        const studentBlocks = pastedText.split(/Student\s(?:Name\s)?([A-Za-z0-9]+)[:\s]*/i).filter(s => s.trim());
-        
-        let names: string[] = [];
-        let answersBlocks: string[] = [];
+        const lines = pastedText.split('\n');
+        let currentStudent: Student | null = null;
+        const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
 
-        // The regex split results in an array of [name, answers, name, answers, ...]
-        for (let i = 0; i < studentBlocks.length; i += 2) {
-            names.push(studentBlocks[i].trim() || `Student ${names.length + 1}`);
-            answersBlocks.push(studentBlocks[i + 1] ? studentBlocks[i + 1].trim() : "");
-        }
+        lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) return;
 
-        detectedCount = names.length;
+            const bulletMatch = trimmedLine.match(bulletRegex);
 
-        parsedStudents = names.map((name, index) => {
-            const answerText = answersBlocks[index] || "";
-            let answers: string[] = [];
-
-            // If there's more than one question, attempt to split the answer block
-            if (questions.length > 1 && answerText) {
-                // Heuristic: try splitting by bullet points first
-                let potentialAnswers = answerText.split(/•/g).map(a => a.trim()).filter(Boolean);
-                
-                // If not bullet points, try splitting by double newlines
-                if (potentialAnswers.length < questions.length) {
-                    potentialAnswers = answerText.split(/\n\s*\n/).map(a => a.trim()).filter(Boolean);
+            if (bulletMatch) { // It's an answer
+                if (currentStudent) {
+                    currentStudent.answers.push(bulletMatch[1].trim());
                 }
-
-                // If still not enough, chunk the text as a last resort
-                if (potentialAnswers.length < questions.length) {
-                     const words = answerText.split(/\s+/);
-                     const wordsPerAnswer = Math.max(1, Math.floor(words.length / questions.length));
-                     potentialAnswers = [];
-                     for (let i = 0; i < questions.length; i++) {
-                        const start = i * wordsPerAnswer;
-                        const end = (i === questions.length - 1) ? words.length : (i + 1) * wordsPerAnswer;
-                        potentialAnswers.push(words.slice(start, end).join(' '));
-                     }
+            } else { // It's a student name
+                if (currentStudent) {
+                    parsedStudents.push(currentStudent);
                 }
-                answers = potentialAnswers.slice(0, questions.length);
-
-            } else {
-                 answers = [answerText];
+                currentStudent = {
+                    id: `s${Date.now()}${parsedStudents.length}`,
+                    name: trimmedLine,
+                    answers: []
+                };
             }
-
-            return { id: `s${Date.now()}${index}`, name, answers };
         });
-        
+        if (currentStudent) {
+            parsedStudents.push(currentStudent);
+        }
     } else { // File Upload
-        detectedCount = uploadedFiles.length;
-        const studentPromises = uploadedFiles.map(async (file, index) => {
-            const text = await file.text();
-            // Assuming each line in file is an answer
-            const answers = text.split('\n').map(line => line.trim()).filter(Boolean);
+        const filePromises = (uploadedFiles as any[]).map(async (fileJson, index) => {
+            const file = JSON.parse(fileJson);
+            const text = file.text;
+            const lines = text.split('\n').map((line: string) => line.trim()).filter(Boolean);
+            const answers = lines.map((line: string) => {
+                const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+                const match = line.match(bulletRegex);
+                return match ? match[1] : line; // Store full line if not bulleted
+            });
             const name = file.name.replace(/\.[^/.]+$/, "") || `Student ${index + 1}`; // filename without extension
             return { id: `s${Date.now()}${index}`, name, answers };
         });
-        parsedStudents = await Promise.all(studentPromises);
+        parsedStudents = await Promise.all(filePromises);
     }
 
-    if (detectedCount < studentCount) {
-        setValidationWarning(`Only ${detectedCount} out of ${studentCount} student answers provided.`);
-        setStudents(parsedStudents); // Set what we have, so user can choose to continue
-        return; // Stop here and wait for user action
+    // Validation
+    if (parsedStudents.length < studentCount) {
+        setValidationWarning({
+            type: 'count',
+            message: `Only ${parsedStudents.length} out of ${studentCount} student answers provided.`,
+        });
+        setStudents(parsedStudents); // Set what we have
+        return;
+    }
+
+    parsedStudents.forEach(student => {
+        if (student.answers.length !== questions.length) {
+            validationDetails.push(`⚠️ ${student.name} has ${student.answers.length}/${questions.length} answers.`);
+        }
+    });
+
+    if (validationDetails.length > 0) {
+        setValidationWarning({
+            type: 'mismatch',
+            message: "Some students have an incorrect number of answers.",
+            details: validationDetails,
+        });
+        setStudents(parsedStudents); // Set what we have
+        return;
     }
 
     setStudents(parsedStudents);
@@ -695,7 +719,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                      <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="space-y-2">
                             <Label htmlFor="student-count">Total number of students</Label>
-                            <Input id="student-count" type="number" value={studentCount} onChange={e => setStudentCount(parseInt(e.target.value, 10) || 0)} />
+                            <Input id="student-count" type="number" value={studentCount} onChange={e => setStudentCount(parseInt(e.target.value, 10) || 0)} min={1} />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="question-count">Total number of questions per student</Label>
@@ -717,17 +741,10 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                                 <Info className="w-4 h-4 text-muted-foreground cursor-pointer"/>
                                             </PopoverTrigger>
                                             <PopoverContent>
-                                                <div className="p-2 text-sm space-y-2">
-                                                    <p className="font-bold">Each student's entry starts with "Student" and a name/ID, followed by their answers. The parser will attempt to divide the text among the questions.</p>
-                                                    <code className="block whitespace-pre-wrap p-2 rounded bg-muted mt-2 text-xs">
-                                                        Student A:<br/>
-                                                        Answer to Question 1...<br/>
-                                                        Answer to Question 2...<br/>
-                                                        <br/>
-                                                        Student Name Bob<br/>
-                                                        Answer 1...<br/>
-                                                    </code>
-                                                </div>
+                                                <p className="max-w-xs p-2 text-sm">Paste student answers below. Each student's name should be on its own line, followed by their answers as bullet points.</p>
+                                                <pre className="mt-2 bg-muted p-2 rounded text-xs">
+                                                    {`Student Name 1\n• Answer 1\n• Answer 2\n\nStudent Name 2\n• Answer 1\n...`}
+                                                </pre>
                                             </PopoverContent>
                                         </Popover>
                                     </CardTitle>
@@ -749,7 +766,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                             <Info className="w-4 h-4 text-muted-foreground cursor-pointer"/>
                                           </PopoverTrigger>
                                           <PopoverContent>
-                                              <p className="max-w-xs p-2 text-sm">Upload one .txt file per student. The student's name will be the filename. Each line in the file is treated as an answer to a question, in order.</p>
+                                              <p className="max-w-xs p-2 text-sm">Upload one .txt file per student. The student's name will be the filename. Each line in the file should be a bulleted answer to a question, in order.</p>
                                           </PopoverContent>
                                       </Popover>
                                     </CardTitle>
@@ -757,7 +774,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                 <CardContent>
                                     <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
                                         <FileUp className="mr-2" />
-                                        Upload Files ({uploadedFiles.length})
+                                        Upload Files ({Array.isArray(uploadedFiles) ? uploadedFiles.length : 0})
                                     </Button>
                                     <Input 
                                         type="file" 
@@ -768,9 +785,12 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                         accept=".txt"
                                     />
                                     <ScrollArea className="mt-2 h-32 w-full rounded-md border p-2">
-                                        {uploadedFiles.length > 0 ? (
+                                        {Array.isArray(uploadedFiles) && uploadedFiles.length > 0 ? (
                                             <ul>
-                                                {uploadedFiles.map((file, i) => <li key={i} className="text-sm">{file.name}</li>)}
+                                                {uploadedFiles.map((fileJson, i) => {
+                                                    const file = JSON.parse(fileJson);
+                                                    return <li key={i} className="text-sm">{file.name}</li>
+                                                })}
                                             </ul>
                                         ) : (
                                             <p className="text-sm text-muted-foreground text-center py-10">No files uploaded.</p>
@@ -784,9 +804,15 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             </Tabs>
              {validationWarning && (
                 <Alert variant="destructive" className="mt-4">
+                    <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Warning</AlertTitle>
                     <AlertDescription>
-                        {validationWarning}
+                        {validationWarning.message}
+                        {validationWarning.details && (
+                           <ul className="list-disc list-inside mt-2 text-xs">
+                               {validationWarning.details.map((d, i) => <li key={i}>{d}</li>)}
+                           </ul>
+                        )}
                         <div className="flex gap-2 mt-2">
                            <Button variant="outline" size="sm" onClick={() => setValidationWarning(null)}>Go Back and Fix</Button>
                            <Button size="sm" onClick={handleContinueAnyway}>Continue Anyway</Button>
