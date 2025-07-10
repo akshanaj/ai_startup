@@ -113,7 +113,7 @@ export default function Home() {
                           <AlertDialogDescription>
                             This action cannot be undone. This will permanently delete the assignment
                              and all related data from your local storage.
-                          </Description>
+                          </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
