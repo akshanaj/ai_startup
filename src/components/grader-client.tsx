@@ -6,7 +6,7 @@ import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { formatAnswers } from "@/ai/flows/format-answers"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle, Info, FileText, Upload, ClipboardPaste } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle, Info, FileText, Upload, ClipboardPaste, ArrowLeft, ArrowRight } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -72,20 +72,21 @@ interface ChatMessage {
 
 // Custom hook for state with localStorage persistence
 function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [state, setState] = useState<T>(() => {
-        // This function now only runs on the client, avoiding server-side execution.
-        if (typeof window === 'undefined') {
-            return defaultValue;
-        }
+    const [state, setState] = useState<T>(defaultValue);
+
+    // After hydration, load from localStorage
+    useEffect(() => {
         try {
             const storedValue = window.localStorage.getItem(key);
-            return storedValue ? JSON.parse(storedValue) : defaultValue;
+            if (storedValue) {
+                setState(JSON.parse(storedValue));
+            }
         } catch (error) {
             console.error("Error reading from localStorage", error);
-            return defaultValue;
         }
-    });
-    
+    }, [key]);
+
+    // On state change, save to localStorage
     useEffect(() => {
         try {
             window.localStorage.setItem(key, JSON.stringify(state));
@@ -99,6 +100,7 @@ function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch
 
 
 export default function GraderClient({ assignmentId }: { assignmentId: string }) {
+  const [isHydrated, setIsHydrated] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [isDataDialogOpen, setIsDataDialogOpen] = useState(false);
@@ -129,7 +131,6 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const { toast } = useToast()
 
-  const [isHydrated, setIsHydrated] = useState(false);
   useEffect(() => {
     setIsHydrated(true);
   }, []);
@@ -679,21 +680,43 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
         <div className="col-span-12 md:col-span-6 order-1 md:order-2 h-full overflow-y-auto flex flex-col gap-4">
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild disabled={!isDataLoaded}>
-                            <Button variant="outline">
-                                {currentQuestion ? `Q${activeQuestionIndex + 1}: ${currentQuestion.text.substring(0, 30)}...` : 'No Questions'}
-                                <ChevronDown className="w-4 h-4 ml-2" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                            {questions.map((q, index) => (
-                                <DropdownMenuItem key={q.id} onSelect={() => setActiveQuestionIndex(index)}>
-                                    Question {index + 1}: {q.text}
-                                </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex items-center gap-2">
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            onClick={() => setActiveQuestionIndex(prev => Math.max(0, prev - 1))}
+                            disabled={!isDataLoaded || activeQuestionIndex === 0}
+                        >
+                            <ArrowLeft className="w-4 h-4"/>
+                            <span className="sr-only">Previous Question</span>
+                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild disabled={!isDataLoaded}>
+                                <Button variant="outline" className="w-64 justify-between">
+                                    <span className="truncate">
+                                        {currentQuestion ? `Q${activeQuestionIndex + 1}: ${currentQuestion.text}` : 'No Questions'}
+                                    </span>
+                                    <ChevronDown className="w-4 h-4 ml-2" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="w-64">
+                                {questions.map((q, index) => (
+                                    <DropdownMenuItem key={q.id} onSelect={() => setActiveQuestionIndex(index)}>
+                                        <span className="truncate">Question {index + 1}: {q.text}</span>
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                         <Button 
+                            variant="outline" 
+                            size="icon"
+                            onClick={() => setActiveQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
+                            disabled={!isDataLoaded || activeQuestionIndex === questions.length - 1}
+                        >
+                            <ArrowRight className="w-4 h-4"/>
+                            <span className="sr-only">Next Question</span>
+                        </Button>
+                    </div>
 
                      {currentGradingResult && (
                         <Popover open={isScorePopoverOpen} onOpenChange={setIsScorePopoverOpen}>
@@ -950,7 +973,18 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     <div className="space-y-2 flex-grow flex flex-col">
                                         <Label htmlFor="paste-area" className="text-base font-semibold">Paste All Student Answers</Label>
                                          <p className="text-xs text-muted-foreground">
-                                            Enter a student's name on its own line, then list their answers on new lines, each starting with a bullet (•, -, or *).
+                                            Student Name 1
+                                            <br/>
+                                            • Answer 1
+                                            <br/>
+                                            • Answer 2
+                                            <br/>
+                                            <br/>
+                                            Student Name 2
+                                            <br/>
+                                            • Answer 1
+                                            <br/>
+                                            • Answer 2
                                         </p>
                                         <Textarea 
                                             id="paste-area"
