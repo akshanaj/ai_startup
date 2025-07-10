@@ -63,9 +63,9 @@ export default function Home() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-transparent p-8 sm:p-12 md:p-24">
-      <div className="w-full max-w-4xl rounded-xl border border-border/20 bg-background/80 p-8 shadow-2xl backdrop-blur-sm">
-        <div className="text-center mb-12 p-8 rounded-xl bg-gradient-to-b from-muted/30 to-background/10">
+    <main className="flex min-h-screen flex-col items-center p-8 sm:p-12 md:p-24">
+      <div className="w-full max-w-4xl">
+        <div className="text-center mb-12">
            <div className="flex items-center justify-center gap-4 mb-4">
               <Apple className="w-12 h-12 text-destructive transition-transform duration-300 hover:animate-pulse" />
               <h1 className="text-5xl font-bold font-headline">

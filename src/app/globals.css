@@ -54,21 +54,7 @@
     @apply border-border;
   }
   body {
-    background-image: linear-gradient(to bottom right, #f9f7e5, #f2f0dc, #eae7d4);
-    @apply text-foreground;
-  }
-
-  body::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-image: url('/images/paper-texture.svg');
-    opacity: 0.1;
-    z-index: -1;
-    pointer-events: none;
+    @apply bg-background text-foreground;
   }
 
   .output-document h1 { @apply text-4xl font-bold mb-6 font-headline; }
