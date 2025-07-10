@@ -210,9 +210,9 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
                     let text = '';
                     for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
+                        const page = await page.getPage(i);
                         const content = await page.getTextContent();
-                        text += content.items.map((item: any) => 'str' in item && item.str).join(' ');
+                        text += content.items.map((item: any) => ('str' in item ? item.str : '')).join(' ');
                     }
                     resolve(text);
                 } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
@@ -474,7 +474,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                 rubric: `${currentQuestion.rubric} Grading is out of ${currentQuestion.maxPoints} points.`,
                 keywords: currentQuestion.keywords,
                 studentId: student.id,
-                questionId: currentQuestion.id
+                questionId: question.id
             },
             currentAnalysis,
             userMessage: userMessage.message,
@@ -925,3 +925,5 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
+
+    
