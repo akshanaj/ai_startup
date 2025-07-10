@@ -70,28 +70,31 @@ interface ChatMessage {
 
 // Custom hook for state with localStorage persistence
 function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [state, setState] = useState<T>(() => {
-        if (typeof window === 'undefined') {
-            return defaultValue;
-        }
-        try {
-            const storedValue = window.localStorage.getItem(key);
-            return storedValue ? JSON.parse(storedValue) : defaultValue;
-        } catch (error) {
-            console.error("Error reading from localStorage", error);
-            return defaultValue;
-        }
-    });
+    const [state, setState] = useState<T>(defaultValue);
+    const [isHydrated, setIsHydrated] = useState(false);
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
+        try {
+            const storedValue = window.localStorage.getItem(key);
+            if (storedValue) {
+                setState(JSON.parse(storedValue));
+            }
+        } catch (error) {
+            console.error("Error reading from localStorage", error);
+        } finally {
+            setIsHydrated(true);
+        }
+    }, [key]);
+
+    useEffect(() => {
+        if (isHydrated) {
             try {
                 window.localStorage.setItem(key, JSON.stringify(state));
             } catch (error) {
                 console.error("Error writing to localStorage", error);
             }
         }
-    }, [key, state]);
+    }, [key, state, isHydrated]);
 
     return [state, setState];
 }
@@ -974,5 +977,3 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
-
-    
