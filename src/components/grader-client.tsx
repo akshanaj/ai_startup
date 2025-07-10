@@ -207,21 +207,62 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
     return newStudents;
   };
+
+  const parsePastedText = (text: string): Student[] => {
+      const newStudents: Student[] = [];
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      let currentStudent: Student | null = null;
+
+      for (const line of lines) {
+          const isAnswer = /^[\s]*[•\-–*]/.test(line);
+          const isStudentName = !isAnswer;
+
+          if (isStudentName) {
+              if (currentStudent) {
+                  newStudents.push(currentStudent);
+              }
+              currentStudent = {
+                  id: `s-${Date.now()}-${line.substring(0, 10)}`,
+                  name: line,
+                  answers: [],
+              };
+          } else if (currentStudent && isAnswer) {
+              const answerText = line.replace(/^[\s]*[•\-–*][\s]*/, '');
+              currentStudent.answers.push(answerText);
+          }
+      }
+
+      if (currentStudent) {
+          newStudents.push(currentStudent);
+      }
+      return newStudents.filter(s => s.answers.length > 0);
+  };
   
   const handleUpdateStudentAnswers = async () => {
     let newStudents: Student[] = [];
+
     if (activeDataTab === 'file-upload') {
         newStudents = await parseFileContent(uploadedFiles);
+        if (newStudents.length === 0 && uploadedFiles.length > 0) {
+            toast({
+                title: "No Answers Found",
+                description: `No valid student answers were found in the uploaded files.`,
+                variant: "destructive"
+            });
+            return;
+        }
+    } else if (activeDataTab === 'paste-text') {
+        newStudents = parsePastedText(pastedAnswers);
+        if (newStudents.length === 0 && pastedAnswers.trim().length > 0) {
+            toast({
+                title: "No Answers Found",
+                description: `Could not parse any students and answers from the pasted text.`,
+                variant: "destructive"
+            });
+            return;
+        }
     }
 
-    if (newStudents.length === 0) {
-        toast({
-            title: "No Answers Found",
-            description: `No valid student answers were found in the uploaded files.`,
-            variant: "destructive"
-        });
-        return;
-    }
 
     const validationIssues = newStudents
         .map(s => ({ name: s.name, answerCount: s.answers.length }))
@@ -621,10 +662,10 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                   <DialogTitle>Manage Data</DialogTitle>
                   <CardDescription>Add questions and student answers for the assignment.</CardDescription>
               </DialogHeader>
-              <Tabs value={activeDataTab} onValueChange={setActiveDataTab} className="flex-grow flex flex-col">
+              <Tabs defaultValue="questions" className="flex-grow flex flex-col">
                   <TabsList className="shrink-0">
                       <TabsTrigger value="questions">Questions</TabsTrigger>
-                      <TabsTrigger value="file-upload">Student Answers</TabsTrigger>
+                      <TabsTrigger value="student-answers">Student Answers</TabsTrigger>
                   </TabsList>
                   <TabsContent value="questions" className="flex-grow overflow-auto pr-4">
                       <div className="flex justify-between items-center mb-4">
@@ -665,36 +706,64 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                       </Accordion>
                       
                   </TabsContent>
-                  <TabsContent value="file-upload" className="flex-grow overflow-auto">
-                      <div className="space-y-4 p-4 border rounded-md h-full flex flex-col">
-                        <div className="space-y-2">
-                          <Label htmlFor="file-upload">Upload Student Answers (.txt files)</Label>
-                          <Input id="file-upload" type="file" multiple accept=".txt" onChange={handleFileChange} />
-                          <p className="text-xs text-muted-foreground">
-                            Upload one .txt file per student. The filename (without extension) will be used as the student's name.
-                            Each answer inside the file must start with a bullet point (•, -, or *).
-                          </p>
-                        </div>
-                         {uploadedFiles.length > 0 && (
-                          <div className="flex-grow">
-                              <p className="text-sm font-medium mb-2">Selected Files:</p>
-                              <ScrollArea className="h-48">
-                                  <ul className="space-y-1">
-                                      {uploadedFiles.map(file => (
-                                          <li key={file.name} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-md">
-                                              <FileText className="h-4 w-4" />
-                                              {file.name}
-                                          </li>
-                                      ))}
-                                  </ul>
-                              </ScrollArea>
-                          </div>
-                        )}
-                        <Button onClick={handleUpdateStudentAnswers} disabled={uploadedFiles.length === 0} className="mt-auto">
-                          <Upload className="mr-2" /> Update Student Answers
-                        </Button>
-                      </div>
-                  </TabsContent>
+                   <TabsContent value="student-answers" className="flex-grow overflow-auto">
+                        <Tabs value={activeDataTab} onValueChange={setActiveDataTab} className="flex-grow flex flex-col">
+                            <TabsList>
+                                <TabsTrigger value="file-upload">File Upload</TabsTrigger>
+                                <TabsTrigger value="paste-text">Paste Text</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="file-upload" className="flex-grow overflow-auto mt-4">
+                                <div className="space-y-4 p-4 border rounded-md h-full flex flex-col">
+                                    <div className="space-y-2">
+                                    <Label htmlFor="file-upload">Upload Student Answers (.txt files)</Label>
+                                    <Input id="file-upload" type="file" multiple accept=".txt" onChange={handleFileChange} />
+                                    <p className="text-xs text-muted-foreground">
+                                        Upload one .txt file per student. The filename (without extension) will be used as the student's name.
+                                        Each answer inside the file must start with a bullet point (•, -, or *).
+                                    </p>
+                                    </div>
+                                    {uploadedFiles.length > 0 && (
+                                    <div className="flex-grow">
+                                        <p className="text-sm font-medium mb-2">Selected Files:</p>
+                                        <ScrollArea className="h-48">
+                                            <ul className="space-y-1">
+                                                {uploadedFiles.map(file => (
+                                                    <li key={file.name} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-md">
+                                                        <FileText className="h-4 w-4" />
+                                                        {file.name}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </ScrollArea>
+                                    </div>
+                                    )}
+                                    <Button onClick={handleUpdateStudentAnswers} disabled={uploadedFiles.length === 0} className="mt-auto">
+                                    <Upload className="mr-2" /> Update Student Answers
+                                    </Button>
+                                </div>
+                            </TabsContent>
+                            <TabsContent value="paste-text" className="flex-grow overflow-auto mt-4">
+                                <div className="space-y-4 p-4 border rounded-md h-full flex flex-col">
+                                    <div className="space-y-2 flex-grow flex flex-col">
+                                        <Label htmlFor="paste-area">Paste all student answers</Label>
+                                        <Textarea 
+                                            id="paste-area"
+                                            className="flex-grow"
+                                            placeholder={`Student Name 1\n• Answer 1\n• Answer 2\n\nStudent Name 2\n• Answer 1\n• Answer 2`}
+                                            value={pastedAnswers}
+                                            onChange={(e) => setPastedAnswers(e.target.value)}
+                                        />
+                                         <p className="text-xs text-muted-foreground">
+                                            Enter student names on their own line. Start each answer on a new line with a bullet point (•, -, or *).
+                                        </p>
+                                    </div>
+                                     <Button onClick={handleUpdateStudentAnswers} disabled={!pastedAnswers.trim()} className="mt-auto">
+                                        <Upload className="mr-2" /> Update Student Answers
+                                    </Button>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
+                    </TabsContent>
               </Tabs>
               {validationWarning && (
                 <AlertDialog open onOpenChange={() => setValidationWarning(null)}>
@@ -770,5 +839,3 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
-
-    
