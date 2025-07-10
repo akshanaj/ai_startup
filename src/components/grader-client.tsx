@@ -122,7 +122,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   // State for the new data dialog
   const [studentCount, setStudentCount] = usePersistentState(`${assignmentId}-studentCount`, 2);
   const [pastedText, setPastedText] = usePersistentState(`${assignmentId}-pastedText`, "");
-  const [uploadedFiles, setUploadedFiles] = usePersistentState<File[]>(`${assignmentId}-uploadedFiles`, []);
+  const [uploadedFiles, setUploadedFiles] = usePersistentState<any[]>(`${assignmentId}-uploadedFiles`, []);
   
   const [validationWarning, setValidationWarning] = useState<ValidationWarning | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
