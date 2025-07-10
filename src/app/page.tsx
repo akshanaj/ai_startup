@@ -89,13 +89,13 @@ export default function Home() {
            <div className="flex items-center justify-center gap-4 mb-4">
               <AppleIcon className="w-12 h-12 text-primary" />
               <h1 className="text-5xl font-bold font-headline">
-                 Welcome to <span className="text-primary font-bold">Teacher&apos;s</span> <span className="text-destructive font-bold">Pet</span>
+                 Welcome to <span className="px-2 py-1 rounded-md bg-green-200/50">Teacher&apos;s</span> <span className="px-2 py-1 rounded-md bg-red-200/50">Pet</span>
               </h1>
             </div>
           <p className="text-lg text-muted-foreground mb-8 font-body">
             Your AI-powered grading assistant.
           </p>
-          <Button size="lg" onClick={createNewAssignment} className="font-semibold shadow-sm">
+          <Button size="lg" onClick={createNewAssignment} className="font-semibold shadow-sm rounded-lg hover:bg-primary/90">
             <PlusCircle className="mr-2" />
             New Assignment
           </Button>
