@@ -122,6 +122,9 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [validationWarning, setValidationWarning] = useState<{ message: string, onContinue: () => void } | null>(null);
   const [pastedAnswers, setPastedAnswers] = useState("");
+  const [expectedStudents, setExpectedStudents] = useState(0);
+  const [expectedQuestionsPerStudent, setExpectedQuestionsPerStudent] = useState(0);
+
 
   const { toast } = useToast()
 
@@ -134,6 +137,11 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   useEffect(() => {
     setEditableTitle(assignmentName)
   }, [assignmentName]);
+  
+  useEffect(() => {
+    setExpectedQuestionsPerStudent(questions.length);
+  }, [questions]);
+
 
   useEffect(() => {
     if (students.length > 0 && (!activeStudentId || !students.find(s => s.id === activeStudentId))) {
@@ -152,6 +160,8 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     setStudents(example.students);
     setActiveQuestionIndex(0);
     setActiveStudentId(example.students[0]?.id);
+    setExpectedStudents(example.students.length);
+    setExpectedQuestionsPerStudent(example.questions.length);
     setIsDataDialogOpen(false);
     toast({ title: "Example Data Loaded", description: "You can now start grading." });
   };
@@ -327,42 +337,52 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const handleUpdateStudentAnswers = async () => {
     let newStudents: Student[] = [];
 
-    if (activeDataTab === 'file-upload' && uploadedFiles.length > 0) {
+    if (activeDataTab === 'file-upload') {
         newStudents = await processFilesAndCreateStudents(uploadedFiles);
-    } else if (activeDataTab === 'paste-text' && pastedAnswers.trim().length > 0) {
+    } else if (activeDataTab === 'paste-text') {
         newStudents = parsePastedText(pastedAnswers);
     }
+    
+    const providedCount = newStudents.length;
 
-    if (newStudents.length === 0) {
-        toast({
-            title: "No Student Answers Found",
-            description: "Please provide student answers via file upload or by pasting text.",
-            variant: "destructive"
-        });
-        return;
-    }
-
-    const validationIssues = newStudents
-        .map(s => ({ name: s.name, answerCount: s.answers.length }))
-        .filter(s => s.answerCount !== questions.length);
+    const bothEmpty = providedCount === 0 && uploadedFiles.length === 0 && pastedAnswers.trim() === '';
 
     const commitStudents = (studentsToSet: Student[]) => {
-        setStudents(studentsToSet);
-        toast({ title: "Student Answers Updated", description: `Successfully loaded ${studentsToSet.length} student answer(s).` });
-        setValidationWarning(null);
-        setIsDataDialogOpen(false);
+      if (studentsToSet.length === 0 && !bothEmpty) {
+          toast({
+              title: "No Student Answers Found",
+              description: "Could not parse any valid student answers from the provided source.",
+              variant: "destructive"
+          });
+          return;
+      }
+      
+      setStudents(studentsToSet);
+      if (studentsToSet.length > 0) {
+          toast({ title: "Student Answers Updated", description: `Successfully loaded ${studentsToSet.length} student answer(s).` });
+      }
+      setValidationWarning(null);
+      setIsDataDialogOpen(false);
     };
 
-    if (validationIssues.length > 0 && questions.length > 0) {
-        const message = `Some students have a different number of answers than questions (${questions.length}). Issues: ${validationIssues.map(v => `${v.name} (${v.answerCount})`).join(', ')}. Continue anyway?`;
+    if (expectedStudents > 0 && providedCount < expectedStudents) {
+        const message = `Only ${providedCount} out of ${expectedStudents} student answers were provided. Would you like to continue anyway?`;
         setValidationWarning({
             message: message,
             onContinue: () => commitStudents(newStudents)
         });
-    } else {
+    } else if (bothEmpty && expectedStudents > 0) {
+        const message = `Only 0 out of ${expectedStudents} student answers provided. Would you like to continue anyway?`;
+        setValidationWarning({
+            message: message,
+            onContinue: () => commitStudents([])
+        });
+    }
+    else {
         commitStudents(newStudents);
     }
-  };
+};
+
   
 
   const processAndSetGradedDoc = (doc: GradeDocumentOutput, student: Student, question: Question) => {
@@ -734,7 +754,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   );
 
   const renderDataDialog = () => (
-      <Dialog open={isDataDialogOpen} onOpenChange={(open) => { setIsDataDialogOpen(open); if (!open) setValidationWarning(null); }}>
+    <Dialog open={isDataDialogOpen} onOpenChange={(open) => { setIsDataDialogOpen(open); if (!open) setValidationWarning(null); }}>
           <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
               <DialogHeader>
                   <DialogTitle>Manage Data</DialogTitle>
@@ -785,6 +805,20 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                       
                   </TabsContent>
                    <TabsContent value="student-answers" className="flex-grow flex flex-col overflow-auto">
+                      <div className="space-y-4 p-4 border rounded-md mb-4 bg-muted/50">
+                          <p className="text-base font-semibold">Answer Configuration</p>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                  <Label htmlFor="total-students">Total number of students</Label>
+                                  <Input id="total-students" type="number" placeholder="e.g., 25" value={expectedStudents || ''} onChange={e => setExpectedStudents(parseInt(e.target.value, 10) || 0)} />
+                              </div>
+                              <div className="space-y-2">
+                                  <Label htmlFor="questions-per-student">Total number of questions per student</Label>
+                                  <Input id="questions-per-student" type="number" placeholder="e.g., 5" value={expectedQuestionsPerStudent || ''} onChange={e => setExpectedQuestionsPerStudent(parseInt(e.target.value, 10) || 0)} isReadOnly disabled />
+                                  <p className="text-xs text-muted-foreground">This is determined by the number of questions you've added.</p>
+                              </div>
+                          </div>
+                      </div>
                         <Tabs value={activeDataTab} onValueChange={setActiveDataTab} className="flex-grow flex flex-col">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="file-upload"><Upload className="mr-2" />File Upload</TabsTrigger>
@@ -835,7 +869,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                         </ScrollArea>
                                     </div>
                                     )}
-                                    <Button onClick={handleUpdateStudentAnswers} disabled={uploadedFiles.length === 0} className="mt-auto">
+                                    <Button onClick={handleUpdateStudentAnswers} className="mt-auto">
                                         <Upload className="mr-2" /> Load Answers from Files
                                     </Button>
                                 </div>
@@ -857,7 +891,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     </div>
                                      <div className="flex gap-2 mt-auto">
                                         <Button onClick={handleFormatPastedText} variant="outline" className="flex-1">Format Text</Button>
-                                        <Button onClick={handleUpdateStudentAnswers} disabled={!pastedAnswers.trim()} className="flex-1">
+                                        <Button onClick={handleUpdateStudentAnswers} className="flex-1">
                                             <ClipboardPaste className="mr-2" /> Load Pasted Answers
                                         </Button>
                                     </div>
@@ -870,7 +904,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                 <AlertDialog open onOpenChange={() => setValidationWarning(null)}>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Validation Warning</AlertDialogTitle>
+                      <AlertDialogTitle className="flex items-center gap-2"><AlertTriangle className="text-destructive"/>Validation Warning</AlertDialogTitle>
                       <AlertDialogDescription>{validationWarning.message}</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -940,3 +974,5 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
+
+    
