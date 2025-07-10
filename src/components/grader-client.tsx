@@ -72,35 +72,27 @@ interface ChatMessage {
 
 // Custom hook for state with localStorage persistence
 function usePersistentState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [state, setState] = useState<T>(defaultValue);
-    const [isHydrated, setIsHydrated] = useState(false);
-
-    useEffect(() => {
-        setIsHydrated(true);
-    }, []);
-
-    useEffect(() => {
-        if (isHydrated) {
-            try {
-                const storedValue = window.localStorage.getItem(key);
-                if (storedValue) {
-                    setState(JSON.parse(storedValue));
-                }
-            } catch (error) {
-                console.error("Error reading from localStorage", error);
-            }
+    const [state, setState] = useState<T>(() => {
+        // This function now only runs on the client, avoiding server-side execution.
+        if (typeof window === 'undefined') {
+            return defaultValue;
         }
-    }, [key, isHydrated]);
-
-    useEffect(() => {
-        if (isHydrated) {
-            try {
-                window.localStorage.setItem(key, JSON.stringify(state));
-            } catch (error) {
-                console.error("Error writing to localStorage", error);
-            }
+        try {
+            const storedValue = window.localStorage.getItem(key);
+            return storedValue ? JSON.parse(storedValue) : defaultValue;
+        } catch (error) {
+            console.error("Error reading from localStorage", error);
+            return defaultValue;
         }
-    }, [key, state, isHydrated]);
+    });
+    
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(key, JSON.stringify(state));
+        } catch (error) {
+            console.error("Error writing to localStorage", error);
+        }
+    }, [key, state]);
 
     return [state, setState];
 }
@@ -257,10 +249,6 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
           } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
             const result = await mammoth.extractRawText({ arrayBuffer });
             resolve(result.value);
-          } else if (file.type === 'application/rtf' || file.name.endsWith('.rtf') || file.type === 'text/rtf') {
-            // Fallback for RTF: treat as plain text, as client-side parsing is unreliable.
-            // This might include RTF code, but it prevents crashing.
-            resolve(new TextDecoder().decode(arrayBuffer));
           } else { // Plain text
             resolve(new TextDecoder().decode(arrayBuffer));
           }
@@ -912,14 +900,14 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     <div className="space-y-2">
                                         <Label htmlFor="file-upload-input" className="text-base font-semibold">Upload Student Answers</Label>
                                         <p className="text-sm text-muted-foreground">
-                                            Upload one .txt, .docx, .rtf or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
+                                            Upload one .txt, .docx, or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
                                         </p>
                                         <div className="relative">
                                             <Input 
                                                 id="file-upload-input" 
                                                 type="file" 
                                                 multiple 
-                                                accept=".txt,.docx,.rtf,.pdf,application/rtf,text/rtf" 
+                                                accept=".txt,.docx,.pdf" 
                                                 onChange={handleFileChange} 
                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                             />
