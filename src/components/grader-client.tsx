@@ -25,6 +25,11 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import Link from "next/link"
+import mammoth from "mammoth";
+import * as pdfjs from 'pdfjs-dist/build/pdf';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.entry';
+
+pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 interface Student {
     id: string;
@@ -186,28 +191,71 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
   };
 
-  const parseFileContent = async (files: File[]): Promise<Student[]> => {
+  const parseFileContent = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                if (!event.target?.result) {
+                    return reject(new Error("File content is empty."));
+                }
+                const arrayBuffer = event.target.result as ArrayBuffer;
+
+                if (file.type === 'application/pdf') {
+                    const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
+                    let text = '';
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        text += content.items.map((item: any) => item.str).join(' ');
+                    }
+                    resolve(text);
+                } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                    const result = await mammoth.extractRawText({ arrayBuffer });
+                    resolve(result.value);
+                } else { // Plain text
+                    resolve(new TextDecoder().decode(arrayBuffer));
+                }
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsArrayBuffer(file);
+    });
+};
+
+  const processFilesAndCreateStudents = async (files: File[]): Promise<Student[]> => {
     const newStudents: Student[] = [];
     for (const file of files) {
-        const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
-        const text = await file.text();
-        const answers = text
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => /^[\s]*[•\-–*]/.test(line))
-            .map(line => line.replace(/^[\s]*[•\-–*][\s]*/, ''));
+        try {
+            const text = await parseFileContent(file);
+            const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
+            const answers = text
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => /^[\s]*[•\-–*]/.test(line))
+                .map(line => line.replace(/^[\s]*[•\-–*][\s]*/, ''));
 
-        if (answers.length > 0) {
-            newStudents.push({
-                id: `s-${Date.now()}-${name}`,
-                name: name,
-                answers: answers,
+            if (answers.length > 0) {
+                newStudents.push({
+                    id: `s-${Date.now()}-${name}`,
+                    name: name,
+                    answers: answers,
+                });
+            }
+        } catch (error) {
+            toast({
+                title: `Error processing ${file.name}`,
+                description: "Could not read or parse the file.",
+                variant: "destructive"
             });
+            console.error(`Error processing file ${file.name}:`, error);
         }
     }
     return newStudents;
   };
-  
+
   const sanitizeLine = (line: string): string => {
     // Trim whitespace and remove non-printable characters except for standard whitespace
     return line.trim().replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '');
@@ -275,7 +323,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     let newStudents: Student[] = [];
 
     if (activeDataTab === 'file-upload' && uploadedFiles.length > 0) {
-        newStudents = await parseFileContent(uploadedFiles);
+        newStudents = await processFilesAndCreateStudents(uploadedFiles);
     } else if (activeDataTab === 'paste-text' && pastedAnswers.trim().length > 0) {
         newStudents = parsePastedText(pastedAnswers);
     }
@@ -742,9 +790,9 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     <div className="space-y-2">
                                         <Label htmlFor="file-upload" className="text-base font-semibold">Upload Student Answers</Label>
                                         <p className="text-sm text-muted-foreground">
-                                            Upload one .txt file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
+                                            Upload one .txt, .docx, or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
                                         </p>
-                                        <Input id="file-upload" type="file" multiple accept=".txt" onChange={handleFileChange} className="bg-background" />
+                                        <Input id="file-upload" type="file" multiple accept=".txt,.docx,.pdf" onChange={handleFileChange} className="bg-background" />
                                     </div>
                                     {uploadedFiles.length > 0 && (
                                     <div className="flex-grow">
