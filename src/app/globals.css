@@ -54,7 +54,8 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    background-image: linear-gradient(to bottom right, #f9f7e5, #f2f0dc, #eae7d4);
+    @apply text-foreground;
   }
 
   body::before {
