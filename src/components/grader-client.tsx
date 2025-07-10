@@ -26,10 +26,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import Link from "next/link"
 import mammoth from "mammoth";
-import * as pdfjs from 'pdfjs-dist/build/pdf';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.entry';
+import * as pdfjs from 'pdfjs-dist';
 
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+// Set worker path for pdfjs
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface Student {
     id: string;
@@ -207,7 +207,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
                         const content = await page.getTextContent();
-                        text += content.items.map((item: any) => item.str).join(' ');
+                        text += content.items.map((item: any) => 'str' in item && item.str).join(' ');
                     }
                     resolve(text);
                 } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
@@ -914,3 +914,5 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
+
+    
