@@ -218,64 +218,73 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const parseFileContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          if (!event.target?.result) {
-            return reject(new Error("File content is empty."));
+      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            resolve(event.target.result as string);
+          } else {
+            reject(new Error("File content is empty."));
           }
-          const arrayBuffer = event.target.result as ArrayBuffer;
-
-          if (file.type === 'application/pdf') {
-            const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
-            let text = '';
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i);
-              const content = await page.getTextContent();
-              let lastY = -1;
-              let pageText = content.items.map((item: any) => {
-                if ('str' in item) {
-                  let line = '';
-                  if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
-                    line += '\n';
-                  }
-                  lastY = item.transform[5];
-                  return line + item.str;
-                }
-                return '';
-              }).join('');
-              text += pageText + '\n\n'; // Add space between pages
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsText(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            if (!event.target?.result) {
+              return reject(new Error("File content is empty."));
             }
-            resolve(text);
-          } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-            const result = await mammoth.extractRawText({ arrayBuffer });
-            resolve(result.value);
-          } else { // Plain text
-            resolve(new TextDecoder().decode(arrayBuffer));
+            const arrayBuffer = event.target.result as ArrayBuffer;
+
+            if (file.type === 'application/pdf') {
+              const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
+              let text = '';
+              for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                let lastY = -1;
+                let pageText = content.items.map((item: any) => {
+                  if ('str' in item) {
+                    let line = '';
+                    if (lastY !== -1 && item.transform[5] < lastY - 5) { // Simple check for a new line
+                      line += '\n';
+                    }
+                    lastY = item.transform[5];
+                    return line + item.str;
+                  }
+                  return '';
+                }).join('');
+                text += pageText + '\n\n'; // Add space between pages
+              }
+              resolve(text);
+            } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+              const result = await mammoth.extractRawText({ arrayBuffer });
+              resolve(result.value);
+            } else { // Fallback for other text-based files
+              resolve(new TextDecoder().decode(arrayBuffer));
+            }
+          } catch (error) {
+            reject(error);
           }
-        } catch (error) {
-          reject(error);
-        }
-      };
-      reader.onerror = (error) => reject(error);
-      reader.readAsArrayBuffer(file);
+        };
+        reader.onerror = (error) => reject(error);
+        reader.readAsArrayBuffer(file);
+      }
     });
   };
 
   const processFilesAndCreateStudents = async (files: File[]): Promise<Student[]> => {
     const newStudents: Student[] = [];
-    const answerRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+    const answerRegex = /^[\s]*[•\-–*][\s]*(.+)/;
 
     for (const file of files) {
         try {
             const rawText = await parseFileContent(file);
             const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
             
-            // Forcefully re-split content to handle poor formatting from text extraction
-            const lines = rawText
-                .split(/[\n\r]+|(?=[•\-–*]\s)/) // Split on newlines OR before a bullet point
-                .map(line => line.trim())
-                .filter(line => line.length > 0);
+            const lines = rawText.replace(/\r\n/g, '\n').split('\n');
             
             const answers = lines
                 .map(line => {
