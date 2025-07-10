@@ -210,7 +210,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
                     let text = '';
                     for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await page.getPage(i);
+                        const page = await pdf.getPage(i);
                         const content = await page.getTextContent();
                         text += content.items.map((item: any) => ('str' in item ? item.str : '')).join(' ');
                     }
@@ -218,7 +218,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                 } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
                     const result = await mammoth.extractRawText({ arrayBuffer });
                     resolve(result.value);
-                } else { // Plain text
+                } else { // Plain text, rtf, etc.
                     resolve(new TextDecoder().decode(arrayBuffer));
                 }
             } catch (error) {
@@ -793,11 +793,26 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                             <TabsContent value="file-upload" className="flex-grow overflow-auto mt-4">
                                 <div className="space-y-4 p-4 border rounded-md h-full flex flex-col bg-muted/50">
                                     <div className="space-y-2">
-                                        <Label htmlFor="file-upload" className="text-base font-semibold">Upload Student Answers</Label>
+                                        <Label htmlFor="file-upload-input" className="text-base font-semibold">Upload Student Answers</Label>
                                         <p className="text-sm text-muted-foreground">
-                                            Upload one .txt, .docx, or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
+                                            Upload one .txt, .docx, .rtf or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
                                         </p>
-                                        <Input id="file-upload" type="file" multiple accept=".txt,.docx,.pdf" onChange={handleFileChange} className="bg-background" />
+                                        <div className="relative">
+                                            <Input 
+                                                id="file-upload-input" 
+                                                type="file" 
+                                                multiple 
+                                                accept=".txt,.docx,.rtf,.pdf" 
+                                                onChange={handleFileChange} 
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            />
+                                            <Button asChild variant="outline" className="w-full border-dashed border-primary/50 bg-primary/10 hover:bg-primary/20">
+                                                <label htmlFor="file-upload-input" className="cursor-pointer">
+                                                    <Upload className="mr-2" />
+                                                    Choose Files
+                                                </label>
+                                            </Button>
+                                        </div>
                                     </div>
                                     {uploadedFiles.length > 0 && (
                                     <div className="flex-grow">
@@ -925,5 +940,3 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
-
-    
