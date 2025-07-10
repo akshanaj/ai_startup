@@ -218,7 +218,8 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const parseFileContent = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+      // Prioritize .txt extension and use readAsText
+      if (file.name.endsWith('.txt')) {
         const reader = new FileReader();
         reader.onload = (event) => {
           if (event.target?.result) {
@@ -229,7 +230,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
         };
         reader.onerror = (error) => reject(error);
         reader.readAsText(file);
-      } else {
+      } else { // Handle PDF, DOCX, and other files as before
         const reader = new FileReader();
         reader.onload = async (event) => {
           try {
@@ -277,42 +278,45 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const processFilesAndCreateStudents = async (files: File[]): Promise<Student[]> => {
     const newStudents: Student[] = [];
-    const answerRegex = /^[\s]*[•\-–*][\s]*(.+)/;
+    const bulletRegex = /^[\s]*[•\-–*][\s]*(.+)/;
 
     for (const file of files) {
         try {
             const rawText = await parseFileContent(file);
-            const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
+            const studentName = file.name.replace(/\.[^/.]+$/, ""); // strip extension
             
-            const lines = rawText.replace(/\r\n/g, '\n').split('\n');
-            
-            const answers = lines
-                .map(line => {
-                    const match = line.match(answerRegex);
-                    return match ? match[1].trim() : null;
-                })
-                .filter((answer): answer is string => answer !== null && answer.length > 0);
+            const lines = rawText
+              .split(/\r?\n/)
+              .map(line => line.trim())
+              .filter(line => line.length > 0);
+
+            const answers: string[] = [];
+            for (const line of lines) {
+                const match = line.match(bulletRegex);
+                if (match) {
+                    answers.push(match[1].trim());
+                }
+            }
             
             if (answers.length > 0) {
                  const student: Student = {
-                    id: `s-${Date.now()}-${name}`,
-                    name: name,
+                    id: `s-${Date.now()}-${studentName}`,
+                    name: studentName,
                     answers: answers,
                 };
                 newStudents.push(student);
 
                 if (expectedQuestionsPerStudent > 0 && answers.length !== expectedQuestionsPerStudent) {
                     toast({
-                        title: `Answer Mismatch for ${name}`,
-                        description: `Found ${answers.length} answers, but expected ${expectedQuestionsPerStudent}.`,
+                        title: `Answer Mismatch`,
+                        description: `${studentName} submitted ${answers.length}/${expectedQuestionsPerStudent} answers.`,
                         variant: "destructive"
                     });
                 }
             } else {
-                 console.warn(`No valid bulleted answers found in file: ${file.name}`);
                  toast({
-                    title: `Warning: No answers found for ${name}`,
-                    description: `The file ${file.name} did not contain any recognizable bullet points.`,
+                    title: `No answers found`,
+                    description: `File "${file.name}" did not contain any valid bulleted answers.`,
                     variant: "destructive"
                 });
             }
@@ -415,6 +419,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     const bothEmpty = providedCount === 0 && uploadedFiles.length === 0 && pastedAnswers.trim() === '';
 
     const commitStudents = (studentsToSet: Student[]) => {
+      // Only show this warning if no students could be parsed from any source
       if (studentsToSet.length === 0 && !bothEmpty) {
           toast({
               title: "No Student Answers Found",
@@ -432,20 +437,13 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
       setIsDataDialogOpen(false);
     };
 
-    if (expectedStudents > 0 && providedCount < expectedStudents) {
+    if (expectedStudents > 0 && providedCount < expectedStudents && !bothEmpty) {
         const message = `Only ${providedCount} out of ${expectedStudents} student answers were provided. Would you like to continue anyway?`;
         setValidationWarning({
             message: message,
             onContinue: () => commitStudents(newStudents)
         });
-    } else if (bothEmpty && expectedStudents > 0) {
-        const message = `Only 0 out of ${expectedStudents} student answers provided. Would you like to continue anyway?`;
-        setValidationWarning({
-            message: message,
-            onContinue: () => commitStudents([])
-        });
-    }
-    else {
+    } else {
         commitStudents(newStudents);
     }
 };
