@@ -474,7 +474,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                 rubric: `${currentQuestion.rubric} Grading is out of ${currentQuestion.maxPoints} points.`,
                 keywords: currentQuestion.keywords,
                 studentId: student.id,
-                questionId: question.id
+                questionId: currentQuestion.id
             },
             currentAnalysis,
             userMessage: userMessage.message,
@@ -850,7 +850,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                         <Textarea 
                                             id="paste-area"
                                             className="flex-grow bg-background font-mono text-xs"
-                                            placeholder={'Student Name 1\n• Answer to question 1...\n• Answer to question 2...\n\nStudent Name 2\n• Their answer to question 1...\n• Their answer to question 2...'}
+                                            placeholder={'Student Name 1\n• Answer 1\n• Answer 2\n\nStudent Name 2\n• Answer 1\n• Answer 2'}
                                             value={pastedAnswers}
                                             onChange={(e) => setPastedAnswers(e.target.value)}
                                         />
