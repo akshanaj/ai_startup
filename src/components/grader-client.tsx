@@ -363,32 +363,29 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     const activeTab = document.querySelector('[data-state="active"]')?.getAttribute('data-value');
 
     if (activeTab === 'paste-text') {
-        const lines = pastedText.split('\n');
+        const lines = pastedText.split('\n').map(line => line.trim()).filter(Boolean);
         let currentStudent: Student | null = null;
         const bulletRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+        const nameRegex = /^[^\s•\-–*].+/;
 
         lines.forEach(line => {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) return;
-
-            const bulletMatch = trimmedLine.match(bulletRegex);
-
-            if (bulletMatch) { // It's an answer
-                if (currentStudent) {
-                    currentStudent.answers.push(bulletMatch[1].trim());
-                }
-            } else { // It's a student name
+            if (nameRegex.test(line)) { // It's a student name
                 if (currentStudent) {
                     parsedStudents.push(currentStudent);
                 }
                 currentStudent = {
                     id: `s${Date.now()}${parsedStudents.length}`,
-                    name: trimmedLine,
+                    name: line,
                     answers: []
                 };
+            } else { // It might be an answer
+                const bulletMatch = line.match(bulletRegex);
+                if (bulletMatch && currentStudent) {
+                    currentStudent.answers.push(bulletMatch[1].trim());
+                }
             }
         });
-        if (currentStudent) {
+        if (currentStudent) { // Add the last student
             parsedStudents.push(currentStudent);
         }
     } else { // File Upload
@@ -408,10 +405,13 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
 
     // Validation
-    if (parsedStudents.length < studentCount) {
+    const studentsWithAtLeastOneAnswer = parsedStudents.filter(s => s.answers.length > 0);
+    const providedStudentCount = studentsWithAtLeastOneAnswer.length;
+
+    if (providedStudentCount < studentCount) {
         setValidationWarning({
             type: 'count',
-            message: `Only ${parsedStudents.length} out of ${studentCount} student answers provided.`,
+            message: `Only ${providedStudentCount} out of ${studentCount} student answers provided.`,
         });
         setStudents(parsedStudents); // Set what we have
         return;
@@ -436,7 +436,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     setStudents(parsedStudents);
     setIsDataDialogOpen(false);
     setValidationWarning(null);
-    toast({title: "Student Data Updated", description: `${parsedStudents.length} students loaded.`});
+    toast({title: "Student Data Updated", description: `✅ ${providedStudentCount} out of ${studentCount} student answers provided.`});
   };
 
   const handleContinueAnyway = () => {
