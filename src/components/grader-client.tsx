@@ -916,7 +916,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     <div className="space-y-2">
                                         <Label htmlFor="file-upload-input" className="text-base font-semibold">Upload Student Answers</Label>
                                         <p className="text-sm text-muted-foreground">
-                                            Upload one .docx, or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
+                                            Upload one .docx or .pdf file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
                                         </p>
                                         <div className="relative">
                                             <Input 
@@ -966,18 +966,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     <div className="space-y-2 flex-grow flex flex-col">
                                         <Label htmlFor="paste-area" className="text-base font-semibold">Paste All Student Answers</Label>
                                          <p className="text-xs text-muted-foreground">
-                                            Student Name 1
-                                            <br/>
-                                            • Answer 1
-                                            <br/>
-                                            • Answer 2
-                                            <br/>
-                                            <br/>
-                                            Student Name 2
-                                            <br/>
-                                            • Answer 1
-                                            <br/>
-                                            • Answer 2
+                                            Paste student answers here. Each student's name should be on its own line, followed by their answers on new lines, each prefixed with a bullet point.
                                         </p>
                                         <Textarea 
                                             id="paste-area"
