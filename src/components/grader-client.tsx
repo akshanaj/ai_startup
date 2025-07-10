@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle, Info, FileText, Upload } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle, Info, FileText, Upload, ClipboardPaste } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -113,7 +113,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [editableTitle, setEditableTitle] = useState(assignmentName);
 
-  const [activeDataTab, setActiveDataTab] = useState("questions");
+  const [activeDataTab, setActiveDataTab] = useState("file-upload");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [validationWarning, setValidationWarning] = useState<{ message: string, onContinue: () => void } | null>(null);
   const [pastedAnswers, setPastedAnswers] = useState("");
@@ -207,62 +207,87 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }
     return newStudents;
   };
+  
+  const sanitizeLine = (line: string): string => {
+    // Trim whitespace and remove non-printable characters except for standard whitespace
+    return line.trim().replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '');
+  };
 
   const parsePastedText = (text: string): Student[] => {
-      const newStudents: Student[] = [];
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const students: Student[] = [];
       let currentStudent: Student | null = null;
+      const lines = text.split('\n');
+      
+      const studentNameRegex = /^[^\s•\-–*].+/;
+      const answerRegex = /^[\s]*[•\-–*][\s]*(.*)/;
 
-      for (const line of lines) {
-          const isAnswer = /^[\s]*[•\-–*]/.test(line);
-          const isStudentName = !isAnswer;
+      for (const rawLine of lines) {
+        const line = sanitizeLine(rawLine);
+        if (!line) continue;
 
-          if (isStudentName) {
-              if (currentStudent) {
-                  newStudents.push(currentStudent);
-              }
-              currentStudent = {
-                  id: `s-${Date.now()}-${line.substring(0, 10)}`,
-                  name: line,
-                  answers: [],
-              };
-          } else if (currentStudent && isAnswer) {
-              const answerText = line.replace(/^[\s]*[•\-–*][\s]*/, '');
-              currentStudent.answers.push(answerText);
+        const answerMatch = line.match(answerRegex);
+
+        if (answerMatch) {
+          if (currentStudent) {
+            currentStudent.answers.push(answerMatch[1].trim());
           }
+        } else if (studentNameRegex.test(line)) {
+          if (currentStudent) {
+            if (currentStudent.answers.length > 0) {
+              students.push(currentStudent);
+            }
+          }
+          currentStudent = {
+            id: `s-${Date.now()}-${line.substring(0, 10).trim()}`,
+            name: line,
+            answers: [],
+          };
+        }
       }
 
-      if (currentStudent) {
-          newStudents.push(currentStudent);
+      if (currentStudent && currentStudent.answers.length > 0) {
+        students.push(currentStudent);
       }
-      return newStudents.filter(s => s.answers.length > 0);
+      return students;
+  };
+
+  const handleFormatPastedText = () => {
+    const parsedStudents = parsePastedText(pastedAnswers);
+    if (parsedStudents.length === 0) {
+        toast({
+            title: "Nothing to Format",
+            description: "Could not find any student data in the format provided.",
+            variant: "destructive"
+        });
+        return;
+    }
+    const formattedText = parsedStudents.map(student => 
+        `${student.name}\n${student.answers.map(a => `• ${a}`).join('\n')}`
+    ).join('\n\n');
+    setPastedAnswers(formattedText);
+    toast({
+        title: "Text Formatted",
+        description: "Your pasted text has been cleaned up."
+    });
   };
   
   const handleUpdateStudentAnswers = async () => {
     let newStudents: Student[] = [];
 
-    if (activeDataTab === 'file-upload') {
+    if (activeDataTab === 'file-upload' && uploadedFiles.length > 0) {
         newStudents = await parseFileContent(uploadedFiles);
-        if (newStudents.length === 0 && uploadedFiles.length > 0) {
-            toast({
-                title: "No Answers Found",
-                description: `No valid student answers were found in the uploaded files.`,
-                variant: "destructive"
-            });
-            return;
-        }
-    } else if (activeDataTab === 'paste-text') {
+    } else if (activeDataTab === 'paste-text' && pastedAnswers.trim().length > 0) {
         newStudents = parsePastedText(pastedAnswers);
-        if (newStudents.length === 0 && pastedAnswers.trim().length > 0) {
-            toast({
-                title: "No Answers Found",
-                description: `Could not parse any students and answers from the pasted text.`,
-                variant: "destructive"
-            });
-            return;
-        }
     }
 
+    if (newStudents.length === 0) {
+        toast({
+            title: "No Student Answers Found",
+            description: "Please provide student answers via file upload or by pasting text.",
+            variant: "destructive"
+        });
+        return;
+    }
 
     const validationIssues = newStudents
         .map(s => ({ name: s.name, answerCount: s.answers.length }))
@@ -275,7 +300,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
         setIsDataDialogOpen(false);
     };
 
-    if (validationIssues.length > 0) {
+    if (validationIssues.length > 0 && questions.length > 0) {
         const message = `Some students have a different number of answers than questions (${questions.length}). Issues: ${validationIssues.map(v => `${v.name} (${v.answerCount})`).join(', ')}. Continue anyway?`;
         setValidationWarning({
             message: message,
@@ -662,7 +687,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                   <DialogTitle>Manage Data</DialogTitle>
                   <CardDescription>Add questions and student answers for the assignment.</CardDescription>
               </DialogHeader>
-              <Tabs defaultValue="questions" className="flex-grow flex flex-col">
+              <Tabs defaultValue="questions" className="flex-grow flex flex-col overflow-hidden">
                   <TabsList className="shrink-0">
                       <TabsTrigger value="questions">Questions</TabsTrigger>
                       <TabsTrigger value="student-answers">Student Answers</TabsTrigger>
@@ -706,31 +731,30 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                       </Accordion>
                       
                   </TabsContent>
-                   <TabsContent value="student-answers" className="flex-grow overflow-auto">
+                   <TabsContent value="student-answers" className="flex-grow flex flex-col overflow-auto">
                         <Tabs value={activeDataTab} onValueChange={setActiveDataTab} className="flex-grow flex flex-col">
-                            <TabsList>
-                                <TabsTrigger value="file-upload">File Upload</TabsTrigger>
-                                <TabsTrigger value="paste-text">Paste Text</TabsTrigger>
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="file-upload"><Upload className="mr-2" />File Upload</TabsTrigger>
+                                <TabsTrigger value="paste-text"><ClipboardPaste className="mr-2" />Paste Text</TabsTrigger>
                             </TabsList>
                             <TabsContent value="file-upload" className="flex-grow overflow-auto mt-4">
-                                <div className="space-y-4 p-4 border rounded-md h-full flex flex-col">
+                                <div className="space-y-4 p-4 border rounded-md h-full flex flex-col bg-muted/50">
                                     <div className="space-y-2">
-                                    <Label htmlFor="file-upload">Upload Student Answers (.txt files)</Label>
-                                    <Input id="file-upload" type="file" multiple accept=".txt" onChange={handleFileChange} />
-                                    <p className="text-xs text-muted-foreground">
-                                        Upload one .txt file per student. The filename (without extension) will be used as the student's name.
-                                        Each answer inside the file must start with a bullet point (•, -, or *).
-                                    </p>
+                                        <Label htmlFor="file-upload" className="text-base font-semibold">Upload Student Answers</Label>
+                                        <p className="text-sm text-muted-foreground">
+                                            Upload one .txt file per student. The filename will be the student's name, and each answer must start with a bullet point (•, -, or *).
+                                        </p>
+                                        <Input id="file-upload" type="file" multiple accept=".txt" onChange={handleFileChange} className="bg-background" />
                                     </div>
                                     {uploadedFiles.length > 0 && (
                                     <div className="flex-grow">
                                         <p className="text-sm font-medium mb-2">Selected Files:</p>
-                                        <ScrollArea className="h-48">
+                                        <ScrollArea className="h-48 bg-background p-2 rounded-md border">
                                             <ul className="space-y-1">
                                                 {uploadedFiles.map(file => (
                                                     <li key={file.name} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-md">
                                                         <FileText className="h-4 w-4" />
-                                                        {file.name}
+                                                        <span className="truncate">{file.name}</span>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -738,28 +762,31 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                                     </div>
                                     )}
                                     <Button onClick={handleUpdateStudentAnswers} disabled={uploadedFiles.length === 0} className="mt-auto">
-                                    <Upload className="mr-2" /> Update Student Answers
+                                        <Upload className="mr-2" /> Load Answers from Files
                                     </Button>
                                 </div>
                             </TabsContent>
-                            <TabsContent value="paste-text" className="flex-grow overflow-auto mt-4">
-                                <div className="space-y-4 p-4 border rounded-md h-full flex flex-col">
+                            <TabsContent value="paste-text" className="flex-grow flex flex-col overflow-auto mt-4">
+                                <div className="space-y-4 p-4 border rounded-md h-full flex flex-col bg-muted/50">
                                     <div className="space-y-2 flex-grow flex flex-col">
-                                        <Label htmlFor="paste-area">Paste all student answers</Label>
+                                        <Label htmlFor="paste-area" className="text-base font-semibold">Paste All Student Answers</Label>
+                                         <p className="text-xs text-muted-foreground">
+                                            Enter a student's name on its own line, then list their answers on new lines, each starting with a bullet (•, -, or *).
+                                        </p>
                                         <Textarea 
                                             id="paste-area"
-                                            className="flex-grow"
-                                            placeholder={`Student Name 1\n• Answer 1\n• Answer 2\n\nStudent Name 2\n• Answer 1\n• Answer 2`}
+                                            className="flex-grow bg-background font-mono text-xs"
+                                            placeholder={'Student Name 1\n• Answer to question 1...\n• Answer to question 2...\n\nStudent Name 2\n• Their answer to question 1...\n• Their answer to question 2...'}
                                             value={pastedAnswers}
                                             onChange={(e) => setPastedAnswers(e.target.value)}
                                         />
-                                         <p className="text-xs text-muted-foreground">
-                                            Enter student names on their own line. Start each answer on a new line with a bullet point (•, -, or *).
-                                        </p>
                                     </div>
-                                     <Button onClick={handleUpdateStudentAnswers} disabled={!pastedAnswers.trim()} className="mt-auto">
-                                        <Upload className="mr-2" /> Update Student Answers
-                                    </Button>
+                                     <div className="flex gap-2 mt-auto">
+                                        <Button onClick={handleFormatPastedText} variant="outline" className="flex-1">Format Text</Button>
+                                        <Button onClick={handleUpdateStudentAnswers} disabled={!pastedAnswers.trim()} className="flex-1">
+                                            <ClipboardPaste className="mr-2" /> Load Pasted Answers
+                                        </Button>
+                                    </div>
                                 </div>
                             </TabsContent>
                         </Tabs>
