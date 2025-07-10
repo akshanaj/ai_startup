@@ -225,7 +225,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                     for (let i = 1; i <= pdf.numPages; i++) {
                         const page = await pdf.getPage(i);
                         const content = await page.getTextContent();
-                        text += content.items.map((item: any) => ('str' in item ? item.str : '')).join(' ');
+                        text += content.items.map((item: any) => ('str' in item ? item.str : '')).join(' ') + '\n';
                     }
                     resolve(text);
                 } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
@@ -245,23 +245,32 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
 
   const processFilesAndCreateStudents = async (files: File[]): Promise<Student[]> => {
     const newStudents: Student[] = [];
+    const answerRegex = /^[\s]*[•\-–*][\s]*(.*)/;
+
     for (const file of files) {
         try {
             const text = await parseFileContent(file);
             const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
+            
             const answers = text
                 .split('\n')
                 .map(line => line.trim())
-                .filter(line => /^[\s]*[•\-–*]/.test(line))
-                .map(line => line.replace(/^[\s]*[•\-–*][\s]*/, ''));
-
+                .map(line => {
+                    const match = line.match(answerRegex);
+                    return match ? match[1].trim() : null;
+                })
+                .filter((answer): answer is string => answer !== null);
+            
             if (answers.length > 0) {
-                newStudents.push({
+                 newStudents.push({
                     id: `s-${Date.now()}-${name}`,
                     name: name,
                     answers: answers,
                 });
+            } else {
+                 console.warn(`No bulleted answers found in file: ${file.name}`);
             }
+
         } catch (error) {
             toast({
                 title: `Error processing ${file.name}`,
@@ -817,7 +826,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
                               </div>
                               <div className="space-y-2">
                                   <Label htmlFor="questions-per-student">Total number of questions per student</Label>
-                                  <Input id="questions-per-student" type="number" placeholder="e.g., 5" value={expectedQuestionsPerStudent || ''} onChange={e => setExpectedQuestionsPerStudent(parseInt(e.target.value, 10) || 0)} isReadOnly disabled />
+                                  <Input id="questions-per-student" type="number" placeholder="e.g., 5" value={expectedQuestionsPerStudent || ''} readOnly disabled />
                                   <p className="text-xs text-muted-foreground">This is determined by the number of questions you've added.</p>
                               </div>
                           </div>
