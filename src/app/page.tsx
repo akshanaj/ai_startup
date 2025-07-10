@@ -69,7 +69,7 @@ export default function Home() {
           <h1 className="text-5xl font-bold font-headline mb-4">
             Welcome to Teacher&apos;s Pet
           </h1>
-          <p className="text-lg text-muted-foreground mb-8">
+          <p className="text-lg text-muted-foreground mb-8 font-body">
             Your AI-powered grading assistant.
           </p>
           <Button size="lg" onClick={createNewAssignment}>
