@@ -89,7 +89,7 @@ export default function Home() {
            <div className="flex items-center justify-center gap-4 mb-4">
               <AppleIcon className="w-12 h-12 text-primary" />
               <h1 className="text-5xl font-bold font-headline">
-                  Welcome to Teacher&apos;s Pet
+                 Welcome to <span className="text-primary font-bold">Teacher&apos;s</span> <span className="text-destructive font-bold">Pet</span>
               </h1>
             </div>
           <p className="text-lg text-muted-foreground mb-8 font-body">
