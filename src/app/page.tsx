@@ -66,8 +66,8 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center bg-background p-8 sm:p-12 md:p-24">
       <div className="w-full max-w-4xl">
         <div className="text-center mb-12 p-8 rounded-xl bg-gradient-to-b from-muted/30 to-background">
-           <div className="flex items-center justify-center gap-3 mb-4">
-              <Apple className="w-8 h-8 text-destructive transition-transform duration-300 hover:animate-pulse" />
+           <div className="flex items-center justify-center gap-4 mb-4">
+              <Apple className="w-10 h-10 text-destructive transition-transform duration-300 hover:animate-pulse" />
               <h1 className="text-5xl font-bold font-headline">
                  Welcome to <span className="px-2 py-1 rounded-md bg-green-200/50">Teacher&apos;s</span> <span className="px-2 py-1 rounded-md bg-red-200/50">Pet</span>
               </h1>
