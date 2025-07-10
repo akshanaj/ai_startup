@@ -1,11 +1,11 @@
 
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { gradeDocument } from "@/ai/flows/grade-document"
 import { chatWithDocument } from "@/ai/flows/chat-with-document"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle } from "lucide-react"
+import { Loader2, GraduationCap, Sparkles, Bot, User, ChevronDown, Plus, Trash2, Home, Pencil, AlertTriangle, Info, FileText, Upload } from "lucide-react"
 import type { GradeDocumentInput, GradeDocumentOutput, ChatWithDocumentInput } from "@/ai/types";
 import { cn } from "@/lib/utils"
 
@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import Link from "next/link"
 
 interface Student {
@@ -112,6 +113,11 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
   const chatScrollAreaRef = useRef<HTMLDivElement>(null);
   const [editableTitle, setEditableTitle] = useState(assignmentName);
 
+  const [activeDataTab, setActiveDataTab] = useState("questions");
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [validationWarning, setValidationWarning] = useState<{ message: string, onContinue: () => void } | null>(null);
+  const [pastedAnswers, setPastedAnswers] = useState("");
+
   const { toast } = useToast()
 
   const currentQuestion = questions[activeQuestionIndex];
@@ -174,6 +180,72 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     }));
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+        setUploadedFiles(Array.from(event.target.files));
+    }
+  };
+
+  const parseFileContent = async (files: File[]): Promise<Student[]> => {
+    const newStudents: Student[] = [];
+    for (const file of files) {
+        const name = file.name.replace(/\.[^/.]+$/, ""); // Filename without extension
+        const text = await file.text();
+        const answers = text
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => /^[\s]*[•\-–*]/.test(line))
+            .map(line => line.replace(/^[\s]*[•\-–*][\s]*/, ''));
+
+        if (answers.length > 0) {
+            newStudents.push({
+                id: `s-${Date.now()}-${name}`,
+                name: name,
+                answers: answers,
+            });
+        }
+    }
+    return newStudents;
+  };
+  
+  const handleUpdateStudentAnswers = async () => {
+    let newStudents: Student[] = [];
+    if (activeDataTab === 'file-upload') {
+        newStudents = await parseFileContent(uploadedFiles);
+    }
+
+    if (newStudents.length === 0) {
+        toast({
+            title: "No Answers Found",
+            description: `No valid student answers were found in the uploaded files.`,
+            variant: "destructive"
+        });
+        return;
+    }
+
+    const validationIssues = newStudents
+        .map(s => ({ name: s.name, answerCount: s.answers.length }))
+        .filter(s => s.answerCount !== questions.length);
+
+    const commitStudents = (studentsToSet: Student[]) => {
+        setStudents(studentsToSet);
+        toast({ title: "Student Answers Updated", description: `Successfully loaded ${studentsToSet.length} student answer(s).` });
+        setValidationWarning(null);
+        setIsDataDialogOpen(false);
+    };
+
+    if (validationIssues.length > 0) {
+        const message = `Some students have a different number of answers than questions (${questions.length}). Issues: ${validationIssues.map(v => `${v.name} (${v.answerCount})`).join(', ')}. Continue anyway?`;
+        setValidationWarning({
+            message: message,
+            onContinue: () => commitStudents(newStudents)
+        });
+    } else {
+        commitStudents(newStudents);
+    }
+  };
+  
+
   const processAndSetGradedDoc = (doc: GradeDocumentOutput, student: Student, question: Question) => {
     const studentAnswer = student.answers[questions.findIndex(q => q.id === question.id)]
     let highlightedAnswer = studentAnswer;
@@ -184,7 +256,7 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             neutral: "bg-yellow-200/50 hover:bg-yellow-300/80"
         }[item.sentiment];
 
-        const escapedSegment = item.segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedSegment = item.segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&]');
         const regex = new RegExp(`(^|\\s|>)(${escapedSegment})(<|\\s|$)`, 'gi');
 
         if (item.sentiment !== 'neutral') {
@@ -541,54 +613,106 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
         </div>
     </main>
   );
-  
-  const renderDataDialog = () => {
-    return (
-      <Dialog open={isDataDialogOpen} onOpenChange={setIsDataDialogOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-            <DialogHeader>
-                <DialogTitle>Manage Questions</DialogTitle>
-                <CardDescription>Add and configure your assignment questions here.</CardDescription>
-            </DialogHeader>
-            <div className="flex-grow overflow-auto pr-4">
-                <Accordion type="multiple" className="w-full">
-                    {questions.map((q, index) => (
-                        <AccordionItem value={q.id} key={q.id}>
-                            <AccordionTrigger>
-                                <span className="truncate flex-1 text-left">Question {index + 1}: {q.text || "New Question"}</span>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                                <div className="space-y-4 p-2">
-                                    <div className="space-y-2">
-                                        <Label htmlFor={`q-text-${q.id}`}>Question Text</Label>
-                                        <Textarea id={`q-text-${q.id}`} value={q.text} onChange={e => handleUpdateQuestion(index, 'text', e.target.value)} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor={`q-rubric-${q.id}`}>Rubric</Label>
-                                        <Textarea id={`q-rubric-${q.id}`} value={q.rubric} onChange={e => handleUpdateQuestion(index, 'rubric', e.target.value)} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor={`q-keywords-${q.id}`}>Keywords (comma-separated)</Label>
-                                            <Input id={`q-keywords-${q.id}`} value={q.keywords} onChange={e => handleUpdateQuestion(index, 'keywords', e.target.value)} />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor={`q-maxPoints-${q.id}`}>Max Points</Label>
-                                            <Input id={`q-maxPoints-${q.id}`} type="number" value={q.maxPoints} onChange={e => handleUpdateQuestion(index, 'maxPoints', parseInt(e.target.value, 10) || 0)} />
-                                        </div>
-                                    </div>
-                                    <Button variant="destructive" size="sm" onClick={() => handleRemoveQuestion(index)}><Trash2 className="mr-2"/> Remove Question</Button>
-                                </div>
-                            </AccordionContent>
-                        </AccordionItem>
-                    ))}
-                </Accordion>
-                <Button onClick={handleAddNewQuestion} className="mt-4"><Plus className="mr-2"/> Add Question</Button>
-            </div>
-        </DialogContent>
+
+  const renderDataDialog = () => (
+      <Dialog open={isDataDialogOpen} onOpenChange={(open) => { setIsDataDialogOpen(open); if (!open) setValidationWarning(null); }}>
+          <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+              <DialogHeader>
+                  <DialogTitle>Manage Data</DialogTitle>
+                  <CardDescription>Add questions and student answers for the assignment.</CardDescription>
+              </DialogHeader>
+              <Tabs value={activeDataTab} onValueChange={setActiveDataTab} className="flex-grow flex flex-col">
+                  <TabsList className="shrink-0">
+                      <TabsTrigger value="questions">Questions</TabsTrigger>
+                      <TabsTrigger value="file-upload">Student Answers</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="questions" className="flex-grow overflow-auto pr-4">
+                      <div className="flex justify-between items-center mb-4">
+                        <p className="text-sm text-muted-foreground">Add and configure your assignment questions here.</p>
+                        <Button onClick={handleAddNewQuestion}><Plus className="mr-2" /> Add Question</Button>
+                      </div>
+                      <Accordion type="multiple" className="w-full">
+                          {questions.map((q, index) => (
+                              <AccordionItem value={q.id} key={q.id}>
+                                  <AccordionTrigger>
+                                      <span className="truncate flex-1 text-left">Question {index + 1}: {q.text || "New Question"}</span>
+                                  </AccordionTrigger>
+                                  <AccordionContent>
+                                      <div className="space-y-4 p-2">
+                                          <div className="space-y-2">
+                                              <Label htmlFor={`q-text-${q.id}`}>Question Text</Label>
+                                              <Textarea id={`q-text-${q.id}`} value={q.text} onChange={e => handleUpdateQuestion(index, 'text', e.target.value)} />
+                                          </div>
+                                          <div className="space-y-2">
+                                              <Label htmlFor={`q-rubric-${q.id}`}>Rubric</Label>
+                                              <Textarea id={`q-rubric-${q.id}`} value={q.rubric} onChange={e => handleUpdateQuestion(index, 'rubric', e.target.value)} />
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-4">
+                                              <div className="space-y-2">
+                                                  <Label htmlFor={`q-keywords-${q.id}`}>Keywords (comma-separated)</Label>
+                                                  <Input id={`q-keywords-${q.id}`} value={q.keywords} onChange={e => handleUpdateQuestion(index, 'keywords', e.target.value)} />
+                                              </div>
+                                              <div className="space-y-2">
+                                                  <Label htmlFor={`q-maxPoints-${q.id}`}>Max Points</Label>
+                                                  <Input id={`q-maxPoints-${q.id}`} type="number" value={q.maxPoints} onChange={e => handleUpdateQuestion(index, 'maxPoints', parseInt(e.target.value, 10) || 0)} />
+                                              </div>
+                                          </div>
+                                          <Button variant="destructive" size="sm" onClick={() => handleRemoveQuestion(index)}><Trash2 className="mr-2" /> Remove Question</Button>
+                                      </div>
+                                  </AccordionContent>
+                              </AccordionItem>
+                          ))}
+                      </Accordion>
+                      
+                  </TabsContent>
+                  <TabsContent value="file-upload" className="flex-grow overflow-auto">
+                      <div className="space-y-4 p-4 border rounded-md h-full flex flex-col">
+                        <div className="space-y-2">
+                          <Label htmlFor="file-upload">Upload Student Answers (.txt files)</Label>
+                          <Input id="file-upload" type="file" multiple accept=".txt" onChange={handleFileChange} />
+                          <p className="text-xs text-muted-foreground">
+                            Upload one .txt file per student. The filename (without extension) will be used as the student's name.
+                            Each answer inside the file must start with a bullet point (•, -, or *).
+                          </p>
+                        </div>
+                         {uploadedFiles.length > 0 && (
+                          <div className="flex-grow">
+                              <p className="text-sm font-medium mb-2">Selected Files:</p>
+                              <ScrollArea className="h-48">
+                                  <ul className="space-y-1">
+                                      {uploadedFiles.map(file => (
+                                          <li key={file.name} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-md">
+                                              <FileText className="h-4 w-4" />
+                                              {file.name}
+                                          </li>
+                                      ))}
+                                  </ul>
+                              </ScrollArea>
+                          </div>
+                        )}
+                        <Button onClick={handleUpdateStudentAnswers} disabled={uploadedFiles.length === 0} className="mt-auto">
+                          <Upload className="mr-2" /> Update Student Answers
+                        </Button>
+                      </div>
+                  </TabsContent>
+              </Tabs>
+              {validationWarning && (
+                <AlertDialog open onOpenChange={() => setValidationWarning(null)}>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Validation Warning</AlertDialogTitle>
+                      <AlertDialogDescription>{validationWarning.message}</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Go Back & Fix</AlertDialogCancel>
+                      <AlertDialogAction onClick={validationWarning.onContinue}>Continue Anyway</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+          </DialogContent>
       </Dialog>
-    );
-  };
+  );
   
 
   return (
@@ -627,10 +751,11 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
             </div>
           </div>
           <div className="flex items-center gap-2">
-             <Button variant="ghost" size="icon" onClick={() => setIsDataDialogOpen(true)}>
-                <Plus />
-                <span className="sr-only">Add or manage data</span>
+            <Button variant="outline" onClick={() => setIsDataDialogOpen(true)}>
+                <Plus className="mr-2"/>
+                Manage Data
             </Button>
+            <Button onClick={loadExample} variant="secondary">Load Example</Button>
             <Button onClick={handleGrade} disabled={isGrading || !isDataLoaded}>
                 {isGrading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
                 {isGrading ? "Grading..." : <><GraduationCap className="mr-2"/> Start Grading</>}
@@ -645,4 +770,5 @@ export default function GraderClient({ assignmentId }: { assignmentId: string })
     </TooltipProvider>
   )
 }
- 
+
+    
